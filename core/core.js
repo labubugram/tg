@@ -995,7 +995,7 @@
             document.getElementById('channelUsername').textContent = `@${CONFIG.CHANNEL_USERNAME}`;
             const avatarEl = document.getElementById('channelAvatar');
             if (avatarEl) {
-                avatarEl.innerHTML = `<img src="avatar640.jpg" style="width:54px; height:54px; object-fit:cover;" alt="Channel avatar" loading="lazy">`;
+                avatarEl.innerHTML = `<img src="/tg/core/avatar.svg" style="width:54px; height:54px; object-fit:cover;" alt="Channel avatar" loading="lazy">`;
             }
         },
         
@@ -1125,14 +1125,14 @@
             } else if (post.has_media) {
                 mediaHTML = post.media_unavailable
                     ? '<div class="media-unavailable">Media unavailable</div>'
-                    : '<div class="media-loading"><img src="/channels/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                    : '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
             }
             
             postEl.innerHTML = `
                 <div class="post-content">
                     <div class="post-header">
                         <div class="post-avatar">
-                            <img src="avatar640.jpg" style="width:36px; height:36px; object-fit:cover;" alt="Channel avatar" loading="lazy">
+                            <img src="/tg/core/avatar.svg" style="width:36px; height:36px; object-fit:cover;" alt="Channel avatar" loading="lazy">
                         </div>
                         <div class="post-author-info">
                             <div class="post-author-name">
