@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Вселенная Плюс</title>
+    <meta name="mirror:channel-id" content="2143470341">
+    <meta name="mirror:channel-title" content="Вселенная Плюс">
+    <meta name="mirror:channel-username" content="vselennayaplus">
+    <link rel="stylesheet" href="/channels/core/core.css">
+</head>
+<body>
+  
+    <div id="app">
+        <div class="tg-header">
+            <div class="channel-profile">
+                <div class="channel-avatar" id="channelAvatar" title="Click to toggle theme"></div>
+                <div class="channel-info">
+                    <div class="channel-title-row">
+                        <span class="channel-title" id="channelTitle">Loading...</span>
+                        <span class="status-dot" id="statusDot"></span>
+                    </div>
+                    <div class="channel-meta">
+                        <span id="channelUsername">@vselennayaplus</span>
+                        <span class="channel-badge">realtime</span>
+                    </div>
+                </div>
+                <div class="new-posts-badge hidden" id="newPostsBadge">
+                    <span class="new-dot"></span>
+                    <span id="newPostsCount">0</span> новых
+                </div>
+            </div>
+        </div>
+
+        <div class="feed" id="feed"></div>
+
+        <div id="infiniteScrollTrigger" class="infinite-scroll-trigger">
+            ↓ Загрузить ещё
+        </div>
+
+        <button class="scroll-top" id="scrollTopBtn" title="Наверх">
+            ↑
+        </button>
+
+        <div class="lightbox" id="lightbox">
+            <button class="lightbox-close" id="lightboxClose">✕</button>
+            <div class="lightbox-content" id="lightboxContent"></div>
+        </div>
+
+        <div id="toastContainer"></div>
+    </div>
+
+    <script src="/channels/core/core.js"></script>
+</body>
+</html>
