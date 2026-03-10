@@ -2,7 +2,7 @@
     'use strict';
 
     const CONFIG = {
-        API_BASE: document.querySelector('meta[name="mirror:api-base"]')?.content || 'https://0808.us.nekhebet.su:8081',
+        API_BASE: document.querySelector('meta[name="mirror:api-base"]')?.content || 'https://nekhebet.su:8080',
         CHANNEL_ID: document.querySelector('meta[name="mirror:channel-id"]')?.content,
         CHANNEL_TITLE: document.querySelector('meta[name="mirror:channel-title"]')?.content,
         CHANNEL_USERNAME: document.querySelector('meta[name="mirror:channel-username"]')?.content,
@@ -17,7 +17,7 @@
         IMAGE_UNLOAD_DISTANCE: 5000,
         DEDUP_TTL: 500,
         WS_BASE: (() => {
-            const apiBase = document.querySelector('meta[name="mirror:api-base"]')?.content || 'https://0808.us.nekhebet.su:8081';
+            const apiBase = document.querySelector('meta[name="mirror:api-base"]')?.content;
             return apiBase.replace('http://', 'ws://').replace('https://', 'wss://');
         })(),
         MEDIA_RETRY_DELAY: 10000,
