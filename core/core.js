@@ -10,23 +10,23 @@
         INITIAL_LIMIT: 20,
         MAX_RECONNECT_ATTEMPTS: 10,
         RECONNECT_BASE_DELAY: 1000,
-        MEDIA_POLL_INTERVAL: 2000,
-        MAX_MEDIA_POLL_ATTEMPTS: 12,
         MAX_VISIBLE_POSTS: 100,
         LAZY_LOAD_OFFSET: 500,
         IMAGE_UNLOAD_DISTANCE: 5000,
-        DEDUP_TTL: 2000, // Увеличено с 500 до 2000ms для edit
+        DEDUP_TTL: 2000,
         WS_BASE: (() => {
             const apiBase = document.querySelector('meta[name="mirror:api-base"]')?.content;
             return apiBase.replace('http://', 'ws://').replace('https://', 'wss://');
         })(),
-        MEDIA_RETRY_DELAY: 10000,
         SYNC_AFTER_RECONNECT: true,
         PING_INTERVAL: 30000,
-        MAX_PLACEHOLDER_RETRIES: 3,
         API_VERSION: 'v1',
         MAX_RECONNECT_ATTEMPTS_TOTAL: 30,
-        RECONNECT_GIVE_UP_DELAY: 300000
+        RECONNECT_GIVE_UP_DELAY: 300000,
+        MEDIA_READY_TIMEOUT: 60000,
+        MAX_CACHE_SIZE: 200,
+        MAX_MEDIA_CACHE_SIZE: 100,
+        CLEANUP_INTERVAL: 60000
     };
 
     const State = {
@@ -41,9 +41,8 @@
         wsReconnectAttempts: 0,
         mediaCache: new Map(),
         mediaErrorCache: new Set(),
-        mediaPollingQueue: new Map(),
-        mediaLoading: new Set(), // Добавлено для предотвращения двойной загрузки
-        pendingMedia: new Map(),
+        mediaLoading: new Set(),
+        mediaPending: new Map(),
         scrollTimeout: null,
         recentMessages: new Map(),
         lastDocumentHeight: 0,
@@ -53,7 +52,6 @@
         pendingTheme: null,
         domCache: null,
         scrollPosition: 0,
-        mediaRetryTimeouts: new Map(),
         intervals: [],
         timeouts: [],
         resizeObserver: null,
@@ -61,7 +59,8 @@
         fullMessageCache: new Map(),
         loadingMessages: new Set(),
         initialLoadComplete: false,
-        pendingEvents: []
+        pendingEvents: [],
+        lastEventId: 0
     };
 
     function cleanupResources() {
@@ -70,16 +69,6 @@
         
         State.timeouts.forEach(clearTimeout);
         State.timeouts = [];
-        
-        State.mediaRetryTimeouts.forEach((timeoutId) => {
-            clearTimeout(timeoutId);
-        });
-        State.mediaRetryTimeouts.clear();
-        
-        State.mediaPollingQueue.forEach((data) => {
-            if (data.timeoutId) clearTimeout(data.timeoutId);
-        });
-        State.mediaPollingQueue.clear();
         
         if (State.resizeObserver) {
             State.resizeObserver.disconnect();
@@ -108,6 +97,42 @@
         return id;
     }
 
+    const CacheManager = {
+        cleanup() {
+            const now = Date.now();
+            
+            if (State.fullMessageCache.size > CONFIG.MAX_CACHE_SIZE) {
+                const keysToDelete = Array.from(State.fullMessageCache.keys())
+                    .slice(0, State.fullMessageCache.size - CONFIG.MAX_CACHE_SIZE);
+                keysToDelete.forEach(key => State.fullMessageCache.delete(key));
+            }
+            
+            if (State.mediaCache.size > CONFIG.MAX_MEDIA_CACHE_SIZE) {
+                const keysToDelete = Array.from(State.mediaCache.keys())
+                    .slice(0, State.mediaCache.size - CONFIG.MAX_MEDIA_CACHE_SIZE);
+                keysToDelete.forEach(key => State.mediaCache.delete(key));
+            }
+            
+            const ttl = CONFIG.DEDUP_TTL * 2;
+            for (const [key, time] of State.recentMessages.entries()) {
+                if (now - time > ttl) {
+                    State.recentMessages.delete(key);
+                }
+            }
+            
+            const fiveMinutesAgo = now - 300000;
+            for (const [messageId, data] of State.mediaPending.entries()) {
+                if (data.timestamp < fiveMinutesAgo) {
+                    State.mediaPending.delete(messageId);
+                }
+            }
+        },
+        
+        startCleanupInterval() {
+            return safeSetInterval(() => this.cleanup(), CONFIG.CLEANUP_INTERVAL);
+        }
+    };
+
     const Security = {
         escapeHtml(unsafe) {
             return unsafe
@@ -130,9 +155,6 @@
         },
         validateMessageId(id) {
             return Number.isInteger(Number(id)) && Number(id) > 0;
-        },
-        validateMediaId(id) {
-            return /^[0-9a-f-]+$/.test(id);
         }
     };
 
@@ -383,7 +405,6 @@
             if (!Security.validateMessageId(messageId)) return null;
             
             if (State.fullMessageCache.has(messageId)) {
-                console.log(`Using cached message ${messageId}`);
                 return State.fullMessageCache.get(messageId);
             }
             
@@ -406,12 +427,10 @@
             
             try {
                 const url = `${CONFIG.API_BASE}/api/${CONFIG.API_VERSION}/messages/${messageId}?channel_id=${CONFIG.CHANNEL_ID}`;
-                console.log(`Fetching message ${messageId} from API`);
                 const response = await fetch(url);
                 
                 if (!response.ok) {
                     if (response.status === 404) {
-                        console.log(`Message ${messageId} not found`);
                         return null;
                     }
                     throw new Error(`HTTP ${response.status}`);
@@ -421,9 +440,8 @@
                 
                 State.fullMessageCache.set(messageId, data);
                 
-                if (State.fullMessageCache.size > 200) {
-                    const firstKey = State.fullMessageCache.keys().next().value;
-                    State.fullMessageCache.delete(firstKey);
+                if (State.fullMessageCache.size > CONFIG.MAX_CACHE_SIZE * 1.2) {
+                    CacheManager.cleanup();
                 }
                 
                 return data;
@@ -472,6 +490,10 @@
                     });
                 }
                 
+                if (State.fullMessageCache.size > CONFIG.MAX_CACHE_SIZE * 1.2) {
+                    CacheManager.cleanup();
+                }
+                
                 const result = {};
                 messageIds.forEach(id => {
                     if (State.fullMessageCache.has(id)) {
@@ -488,7 +510,6 @@
         },
         
         invalidateMessage(messageId) {
-            console.log(`Invalidating cache for message ${messageId}`);
             State.fullMessageCache.delete(messageId);
         }
     };
@@ -558,41 +579,27 @@
             }
         },
         
-        async fetchMedia(messageId) {
+        async fetchMediaOnce(messageId) {
             if (!Security.validateMessageId(messageId)) return null;
-            if (State.mediaErrorCache.has(messageId)) return null;
             if (State.mediaCache.has(messageId)) return State.mediaCache.get(messageId);
             
-            if (State.mediaPollingQueue.has(messageId)) {
-                const { attempts } = State.mediaPollingQueue.get(messageId);
-                if (attempts >= CONFIG.MAX_MEDIA_POLL_ATTEMPTS) {
-                    State.mediaErrorCache.add(messageId);
-                    State.mediaPollingQueue.delete(messageId);
-                    return null;
-                }
-            }
-            
             try {
-                let url = `${CONFIG.API_BASE}/api/media/by-message/${messageId}`;
-                url += `?channel_id=${CONFIG.CHANNEL_ID}`;
+                const url = `${CONFIG.API_BASE}/api/media/by-message/${messageId}?channel_id=${CONFIG.CHANNEL_ID}`;
                 const response = await fetch(url);
                 
                 if (!response.ok) {
-                    if (response.status === 404) {
-                        console.log(`Media for message ${messageId} not ready yet (404)`);
-                        return null;
-                    }
+                    if (response.status === 404) return null;
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
                 const data = await response.json();
                 if (data && data.url) {
                     State.mediaCache.set(messageId, data);
-                    if (State.mediaPollingQueue.has(messageId)) {
-                        const { timeoutId } = State.mediaPollingQueue.get(messageId);
-                        if (timeoutId) clearTimeout(timeoutId);
-                        State.mediaPollingQueue.delete(messageId);
+                    
+                    if (State.mediaCache.size > CONFIG.MAX_MEDIA_CACHE_SIZE * 1.2) {
+                        CacheManager.cleanup();
                     }
+                    
                     return data;
                 }
             } catch (err) {
@@ -601,77 +608,10 @@
             return null;
         },
         
-        pollMedia(messageId, callback, maxAttempts = CONFIG.MAX_MEDIA_POLL_ATTEMPTS) {
-            if (State.mediaPollingQueue.has(messageId) || State.mediaErrorCache.has(messageId)) return;
-            
-            const poll = (attempt) => {
-                if (attempt > maxAttempts) {
-                    if (State.mediaPollingQueue.has(messageId)) {
-                        const { timeoutId } = State.mediaPollingQueue.get(messageId);
-                        if (timeoutId) clearTimeout(timeoutId);
-                        State.mediaPollingQueue.delete(messageId);
-                    }
-                    State.mediaErrorCache.add(messageId);
-                    callback(null, true);
-                    return;
-                }
-                
-                API.fetchMedia(messageId).then(mediaInfo => {
-                    if (mediaInfo && mediaInfo.url) {
-                        State.mediaCache.set(messageId, mediaInfo);
-                        if (State.mediaPollingQueue.has(messageId)) {
-                            const { timeoutId } = State.mediaPollingQueue.get(messageId);
-                            if (timeoutId) clearTimeout(timeoutId);
-                            State.mediaPollingQueue.delete(messageId);
-                        }
-                        callback(mediaInfo.url, false);
-                    } else {
-                        if (State.mediaPollingQueue.has(messageId)) {
-                            const { timeoutId } = State.mediaPollingQueue.get(messageId);
-                            if (timeoutId) clearTimeout(timeoutId);
-                        }
-                        const timeoutId = safeSetTimeout(() => poll(attempt + 1), CONFIG.MEDIA_POLL_INTERVAL);
-                        State.mediaPollingQueue.set(messageId, { attempts: attempt, timeoutId });
-                    }
-                }).catch(() => {
-                    const timeoutId = safeSetTimeout(() => poll(attempt + 1), CONFIG.MEDIA_POLL_INTERVAL);
-                    State.mediaPollingQueue.set(messageId, { attempts: attempt, timeoutId });
-                });
-            };
-            
-            poll(1);
-        },
-        
-        cancelMediaPoll(messageId) {
-            if (State.mediaPollingQueue.has(messageId)) {
-                const { timeoutId } = State.mediaPollingQueue.get(messageId);
-                if (timeoutId) clearTimeout(timeoutId);
-                State.mediaPollingQueue.delete(messageId);
-            }
-            
-            if (State.mediaRetryTimeouts.has(messageId)) {
-                clearTimeout(State.mediaRetryTimeouts.get(messageId));
-                State.mediaRetryTimeouts.delete(messageId);
-            }
-        },
-        
-        cancelAllMediaPoll() {
-            State.mediaPollingQueue.forEach((data, messageId) => {
-                if (data.timeoutId) clearTimeout(data.timeoutId);
-                State.mediaPollingQueue.delete(messageId);
-            });
-            
-            State.mediaRetryTimeouts.forEach((timeoutId, messageId) => {
-                clearTimeout(timeoutId);
-                State.mediaRetryTimeouts.delete(messageId);
-            });
-        },
-        
         clearMediaCache() {
             State.mediaCache.clear();
             State.mediaErrorCache.clear();
-            State.pendingMedia.clear();
-            this.cancelAllMediaPoll();
+            State.mediaPending.clear();
         }
     };
 
@@ -761,7 +701,7 @@
 
     const MediaManager = {
         replaceMediaContainer(postEl, html, messageId) {
-            const old = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-placeholder');
+            const old = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-placeholder, .media-pending');
             if (!old) return null;
             
             old.outerHTML = html;
@@ -853,36 +793,26 @@
         },
         
         loadMedia(messageId) {
-            // Предотвращаем двойную загрузку
             if (State.mediaLoading.has(messageId)) {
-                console.log(`Media already loading for ${messageId}`);
                 return;
             }
             
             const post = State.posts.get(messageId);
-            if (!post || !post.has_media || post.media_url) return;
+            if (!post || !post.has_media) return;
             
-            console.log(`Loading media for message ${messageId}`);
+            if (post.media_url) return;
+            
             State.mediaLoading.add(messageId);
             
-            const pendingMedia = State.pendingMedia.get(messageId);
-            if (pendingMedia) {
-                post.media_url = pendingMedia.media_url;
-                post.media_type = pendingMedia.media_type;
-                UI.updatePost(messageId, {
-                    media_url: pendingMedia.media_url,
-                    media_type: pendingMedia.media_type
-                });
-                State.pendingMedia.delete(messageId);
+            if (State.mediaPending.has(messageId)) {
                 State.mediaLoading.delete(messageId);
                 return;
             }
             
-            API.fetchMedia(messageId).then(mediaInfo => {
+            API.fetchMediaOnce(messageId).then(mediaInfo => {
                 State.mediaLoading.delete(messageId);
                 
                 if (mediaInfo && mediaInfo.url) {
-                    console.log(`Media loaded for message ${messageId}:`, mediaInfo.url);
                     post.media_url = mediaInfo.url;
                     post.media_type = mediaInfo.file_type || post.media_type;
                     UI.updatePost(messageId, {
@@ -890,28 +820,64 @@
                         media_type: post.media_type
                     });
                 } else {
-                    console.log(`Media not ready for message ${messageId}, will retry later`);
-                    this.retryMediaLoad(messageId);
+                    State.mediaPending.set(messageId, {
+                        message_id: messageId,
+                        timestamp: Date.now()
+                    });
+                    
+                    UI.showMediaPending(messageId);
+                    
+                    safeSetTimeout(() => {
+                        if (State.mediaPending.has(messageId)) {
+                            State.mediaPending.delete(messageId);
+                            UI.updatePostMediaUnavailable(messageId, 'timeout');
+                        }
+                    }, CONFIG.MEDIA_READY_TIMEOUT);
                 }
             }).catch(err => {
                 State.mediaLoading.delete(messageId);
-                console.log(`Media fetch failed for ${messageId}:`, err.message);
-                this.retryMediaLoad(messageId);
+                State.mediaPending.set(messageId, {
+                    message_id: messageId,
+                    timestamp: Date.now(),
+                    error: true
+                });
             });
         },
-
-        retryMediaLoad(messageId) {
-            API.pollMedia(messageId, (url, failed) => {
-                if (url) {
-                    const post = State.posts.get(messageId);
-                    if (post) {
-                        post.media_url = url;
-                        UI.updatePost(messageId, { media_url: url });
-                    }
-                } else if (failed) {
-                    UI.updatePostMediaUnavailable(messageId);
+        
+        handleMediaReady(messageId, mediaUrl, mediaType) {
+            const post = State.posts.get(messageId);
+            if (post) {
+                post.media_url = mediaUrl;
+                post.media_type = mediaType || post.media_type;
+                UI.updatePost(messageId, { 
+                    media_url: mediaUrl, 
+                    media_type: post.media_type 
+                });
+            }
+            
+            State.mediaPending.delete(messageId);
+            State.mediaLoading.delete(messageId);
+            
+            State.mediaCache.set(messageId, { url: mediaUrl, file_type: mediaType });
+            
+            if (State.mediaCache.size > CONFIG.MAX_MEDIA_CACHE_SIZE * 1.2) {
+                CacheManager.cleanup();
+            }
+        },
+        
+        showMediaPending(messageId) {
+            const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+            if (!postEl) return;
+            
+            const container = postEl.querySelector('.media-loading, .media-container, .media-unavailable, .media-pending');
+            if (container) {
+                container.outerHTML = '<div class="media-pending">⏳ Media processing...</div>';
+            } else {
+                const postContent = postEl.querySelector('.post-content');
+                if (postContent) {
+                    postContent.insertAdjacentHTML('beforeend', '<div class="media-pending">⏳ Media processing...</div>');
                 }
-            });
+            }
         }
     };
 
@@ -1125,19 +1091,17 @@
             const views = Formatters.formatViews(post.views);
             const text = Formatters.formatText(post.text);
             
-            const pendingMedia = State.pendingMedia.get(post.message_id);
             let mediaHTML = '';
-            if (pendingMedia) {
-                mediaHTML = this.renderMedia(pendingMedia.media_url, pendingMedia.media_type, true);
-                post.media_url = pendingMedia.media_url;
-                post.media_type = pendingMedia.media_type;
-                State.pendingMedia.delete(post.message_id);
-            } else if (post.media_url) {
+            if (post.media_url) {
                 mediaHTML = this.renderMedia(post.media_url, post.media_type, true);
             } else if (post.has_media) {
-                mediaHTML = post.media_unavailable
-                    ? '<div class="media-unavailable">Media unavailable</div>'
-                    : '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                if (State.mediaPending.has(post.message_id)) {
+                    mediaHTML = '<div class="media-pending">⏳ Media processing...</div>';
+                } else {
+                    mediaHTML = post.media_unavailable
+                        ? '<div class="media-unavailable">Media unavailable</div>'
+                        : '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                }
             }
             
             postEl.innerHTML = `
@@ -1171,22 +1135,19 @@
         updatePost(messageId, data) {
             const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (!postEl) {
-                console.log(`Post ${messageId} not in DOM, storing in pendingMedia`);
                 if (data.media_url) {
-                    State.pendingMedia.set(messageId, {
+                    State.mediaPending.set(messageId, {
                         media_url: data.media_url,
-                        media_type: data.media_type
+                        media_type: data.media_type,
+                        timestamp: Date.now()
                     });
                 }
                 return false;
             }
             
-            // Получаем текущие данные из State
             const currentPost = State.posts.get(Number(messageId));
             
-            // Проверяем, действительно ли есть изменения
             if (currentPost) {
-                // Сравниваем по edit_date или явным изменениям
                 const hasChanges = 
                     (data.edit_date && currentPost.edit_date !== data.edit_date) ||
                     (data.text !== undefined && currentPost.text !== data.text) ||
@@ -1195,15 +1156,12 @@
                     (data.media_url && currentPost.media_url !== data.media_url);
                 
                 if (!hasChanges) {
-                    console.log(`No changes for post ${messageId}`);
                     return false;
                 }
                 
-                // Обновляем State с КОПИЕЙ данных
                 State.posts.set(Number(messageId), {...currentPost, ...data});
             }
             
-            console.log(`Updating post ${messageId} in DOM`);
             let changed = false;
             
             if (data.text !== undefined) {
@@ -1213,7 +1171,6 @@
                     if (textEl.innerHTML !== newText) {
                         textEl.innerHTML = newText;
                         changed = true;
-                        console.log(`Text updated for ${messageId}`);
                     }
                 }
             }
@@ -1228,7 +1185,6 @@
                             dateEl.innerHTML += ' <span class="edited-mark">(edited)</span>';
                         }
                         changed = true;
-                        console.log(`Date updated for ${messageId}`);
                     }
                 }
             }
@@ -1256,9 +1212,8 @@
             }
             
             if (data.media_url) {
-                const mediaContainer = postEl.querySelector('.media-container, .media-loading, .media-unavailable');
+                const mediaContainer = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-pending');
                 if (mediaContainer) {
-                    console.log(`Updating media for ${messageId}`);
                     const newMedia = this.renderMedia(data.media_url, data.media_type, true);
                     MediaManager.replaceMediaContainer(postEl, newMedia, messageId);
                     
@@ -1268,7 +1223,6 @@
                 } else {
                     const postContent = postEl.querySelector('.post-content');
                     if (postContent) {
-                        console.log(`Adding media container for ${messageId}`);
                         const newMedia = this.renderMedia(data.media_url, data.media_type, true);
                         postContent.insertAdjacentHTML('beforeend', newMedia);
                         
@@ -1282,23 +1236,21 @@
             if (changed) {
                 postEl.classList.add('updated');
                 safeSetTimeout(() => postEl.classList.remove('updated'), 2000);
-                console.log(`✅ Post ${messageId} updated successfully`);
-            } else {
-                console.log(`No DOM changes for post ${messageId}`);
             }
             
             return changed;
         },
         
-        updatePostMediaUnavailable(messageId) {
+        updatePostMediaUnavailable(messageId, reason = 'failed') {
             const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (!postEl) return false;
             
-            const mediaContainer = postEl.querySelector('.media-loading');
+            const mediaContainer = postEl.querySelector('.media-loading, .media-pending');
             if (mediaContainer) {
-                mediaContainer.outerHTML = '<div class="media-unavailable">📷 Media unavailable</div>';
-                const post = State.posts.get(Number(messageId));
-                if (post) post.media_unavailable = true;
+                const message = reason === 'timeout' 
+                    ? '⏱️ Media took too long to load'
+                    : '📷 Media unavailable';
+                mediaContainer.outerHTML = `<div class="media-unavailable">${message}</div>`;
                 return true;
             }
             
@@ -1320,11 +1272,9 @@
                 State.posts.delete(messageId);
                 const index = State.postOrder.indexOf(Number(messageId));
                 if (index !== -1) State.postOrder.splice(index, 1);
-                API.cancelMediaPoll(messageId);
-                State.pendingMedia.delete(messageId);
+                State.mediaPending.delete(messageId);
+                State.mediaLoading.delete(messageId);
                 State.fullMessageCache.delete(messageId);
-                State.mediaLoading.delete(messageId); // Добавлено
-                console.log(`Post ${messageId} removed from DOM`);
             }, 300);
             
             return true;
@@ -1355,7 +1305,6 @@
             
             posts.forEach(post => {
                 if (post.has_media && !post.media_url) {
-                    // Используем setTimeout с проверкой, чтобы не дублировать
                     safeSetTimeout(() => {
                         MediaManager.loadMedia(post.message_id);
                     }, 500);
@@ -1364,9 +1313,7 @@
         },
         
         addPostToTop(post) {
-            // Проверяем, нет ли уже такого поста
             if (State.posts.has(post.message_id)) {
-                console.log(`Post ${post.message_id} already exists, skipping add`);
                 return;
             }
             
@@ -1454,8 +1401,8 @@
                 UI.cleanup();
                 State.posts.clear();
                 State.postOrder = [];
-                State.pendingMedia.clear();
-                State.mediaLoading.clear(); // Добавлено
+                State.mediaPending.clear();
+                State.mediaLoading.clear();
                 document.getElementById('feed').innerHTML = '';
                 State.offset = 0;
                 State.hasMore = true;
@@ -1480,7 +1427,6 @@
                     const newMessages = [];
                     data.messages.forEach(post => {
                         if (!State.posts.has(post.message_id)) {
-                            // Сохраняем КОПИЮ объекта
                             State.posts.set(post.message_id, {...post});
                             State.postOrder.push(post.message_id);
                             newMessages.push(post);
@@ -1558,17 +1504,16 @@
         giveUp: false,
         giveUpTimer: null,
         
-        connect() {
+        connect(wsUrl = CONFIG.WS_BASE) {
             if (!this.giveUpTimer) {
                 this.giveUpTimer = safeSetTimeout(() => {
-                    console.log('Max reconnection time reached, giving up');
                     this.giveUp = true;
                     Toast.error('Unable to connect to server. Please refresh the page.');
                 }, CONFIG.RECONNECT_GIVE_UP_DELAY);
             }
             
             try {
-                State.ws = new WebSocket(CONFIG.WS_BASE);
+                State.ws = new WebSocket(wsUrl);
                 
                 State.ws.onopen = () => {
                     State.wsConnected = true;
@@ -1589,7 +1534,6 @@
                             channel_id: parseInt(CONFIG.CHANNEL_ID)
                         };
                         State.ws.send(JSON.stringify(subscribeMsg));
-                        console.log(`Subscribed to channel ${CONFIG.CHANNEL_ID}`);
                     }
                     
                     if (CONFIG.SYNC_AFTER_RECONNECT && State.postOrder.length > 0) {
@@ -1649,7 +1593,7 @@
                     newPosts.forEach(post => {
                         if (!State.posts.has(post.message_id)) {
                             UI.addPostToTop(post);
-                            State.posts.set(post.message_id, {...post}); // Копия
+                            State.posts.set(post.message_id, {...post});
                             State.postOrder.unshift(post.message_id);
                         }
                     });
@@ -1663,25 +1607,32 @@
         },
         
         handleMessage(data) {
+            if (data.event_id && data.event_id > State.lastEventId) {
+                State.lastEventId = data.event_id;
+            }
+            
+            if (data.type === 'event_batch') {
+                data.events.forEach(event => {
+                    this.handleMessage(event);
+                });
+                return;
+            }
+            
             if (['ping', 'pong', 'welcome', 'heartbeat', 'buffering', 'flush_start', 'flush_complete', 'subscribed', 'error'].includes(data.type)) {
                 if (data.type === 'subscribed') {
-                    console.log(`Successfully subscribed to channel ${data.channel_id}`);
                 }
                 if (data.type === 'welcome') {
-                    console.log('Received welcome from server, protocol version:', data.version);
                 }
                 return;
             }
             
             if (data.version !== '2.0') {
-                console.warn(`Unsupported protocol version: ${data.version}`);
                 return;
             }
             
             if (data.channel_id !== parseInt(CONFIG.CHANNEL_ID)) return;
             
             if (!State.initialLoadComplete) {
-                console.log(`Queuing event for message ${data.message_id} until initial load completes`);
                 State.pendingEvents.push({
                     data: data.data,
                     isEdit: data.type === 'edit'
@@ -1692,11 +1643,9 @@
             const messageKey = `${data.channel_id}-${data.message_id}-${data.type}`;
             const lastReceived = State.recentMessages.get(messageKey);
             
-            // Увеличиваем TTL для edit сообщений
             const ttl = data.type === 'edit' ? 2000 : CONFIG.DEDUP_TTL;
             
             if (lastReceived && (Date.now() - lastReceived < ttl)) {
-                console.log('Duplicate message ignored:', messageKey);
                 return;
             }
             
@@ -1709,8 +1658,6 @@
                 }
             }
             
-            console.log('WebSocket message received:', data.type, data.message_id);
-            
             switch (data.type) {
                 case 'new':
                     this.handleNewMessage(data);
@@ -1721,14 +1668,14 @@
                 case 'delete':
                     this.handleDeleteMessage(data);
                     break;
-                default:
-                    console.log('Unknown message type:', data.type);
+                case 'media_ready':
+                    this.handleMediaReady(data);
+                    break;
             }
         },
         
         async handleNewMessage(data) {
             if (State.posts.has(data.message_id)) {
-                console.log('Message already exists:', data.message_id);
                 return;
             }
             
@@ -1740,40 +1687,31 @@
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
                 this.processFullMessage(fullMessage);
-            } else {
-                console.error(`Failed to load full message ${data.message_id}`);
             }
         },
         
         async handleEditMessage(data) {
-            console.log(`Handling edit for message ${data.message_id}`);
-            
-            // Проверяем, есть ли уже данные в сообщении (новая версия сервера)
             if (data.data) {
-                console.log(`Processing edit with embedded data for message ${data.message_id}`);
                 this.processFullMessage(data.data, true);
                 return;
             }
             
-            // Старая версия сервера (без данных) - делаем запрос
-            console.log(`No embedded data, fetching message ${data.message_id} from API`);
             MessageAPI.invalidateMessage(data.message_id);
             
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
-                console.log(`Processing edit for message ${data.message_id} with data:`, fullMessage);
                 this.processFullMessage(fullMessage, true);
-            } else {
-                console.error(`Failed to load edited message ${data.message_id}`);
             }
+        },
+        
+        handleMediaReady(data) {
+            MediaManager.handleMediaReady(data.message_id, data.media_url, data.media_type);
+            MessageAPI.invalidateMessage(data.message_id);
         },
         
         processFullMessage(fullMessage, isEdit = false) {
             const messageId = fullMessage.message_id;
             
-            console.log(`Processing ${isEdit ? 'edit' : 'new'} message ${messageId}`);
-            
-            // Создаем объект сообщения
             const post = {
                 message_id: messageId,
                 text: fullMessage.text || '',
@@ -1788,41 +1726,29 @@
                 edit_date: fullMessage.edit_date
             };
             
-            // Проверяем существующее сообщение
             const existingPost = State.posts.get(messageId);
             
             if (isEdit) {
                 if (existingPost) {
-                    // Проверяем, действительно ли есть изменения по edit_date
                     if (existingPost.edit_date === post.edit_date && 
                         existingPost.text === post.text &&
                         existingPost.media_url === post.media_url) {
-                        console.log(`Edit ignored - no changes for message ${messageId}`);
                         return;
                     }
                     
-                    console.log(`Updating existing post ${messageId}`);
-                    // Обновляем State с КОПИЕЙ
                     State.posts.set(messageId, {...post});
-                    
-                    // Обновляем DOM
                     UI.updatePost(messageId, post);
                 } else {
-                    // Сообщения нет в State - добавляем
-                    console.log(`Post ${messageId} not in State.posts, adding as new`);
                     State.posts.set(messageId, {...post});
                     State.postOrder.unshift(messageId);
                     State.postOrder.sort((a, b) => b - a);
                     UI.addPostToTop(post);
                 }
             } else {
-                // Новое сообщение
                 this.addPost(post);
             }
             
-            // Загружаем медиа, если оно есть, но еще не загружено
             if (post.has_media && !post.media_url && !State.mediaLoading.has(messageId)) {
-                console.log(`Scheduling media load for message ${messageId}`);
                 safeSetTimeout(() => {
                     MediaManager.loadMedia(messageId);
                 }, 500);
@@ -1830,55 +1756,41 @@
         },
         
         addPost(post) {
-            // Проверяем, нет ли уже такого сообщения
             if (State.posts.has(post.message_id)) {
-                console.log(`Post ${post.message_id} already exists, skipping add`);
                 return;
             }
             
             if (window.scrollY < 200) {
-                console.log('Adding new post immediately:', post.message_id);
                 UI.addPostToTop(post);
-                // Сохраняем КОПИЮ
                 State.posts.set(post.message_id, {...post});
                 State.postOrder.unshift(post.message_id);
                 State.postOrder.sort((a, b) => b - a);
             } else {
-                // Проверяем, нет ли уже в очереди
                 const existsInQueue = State.newPosts.some(p => p.message_id === post.message_id);
                 if (!existsInQueue) {
-                    console.log('Queuing new post:', post.message_id);
                     State.newPosts.push(post);
                     UI.updateNewPostsBadge();
-                } else {
-                    console.log(`Post ${post.message_id} already in queue, skipping`);
                 }
             }
         },
         
         handleDeleteMessage(data) {
-            console.log('Delete message:', data.message_id);
-            
             State.posts.delete(data.message_id);
             const index = State.postOrder.indexOf(data.message_id);
             if (index !== -1) State.postOrder.splice(index, 1);
             
             UI.deletePost(data.message_id);
-            API.cancelMediaPoll(data.message_id);
-            State.pendingMedia.delete(data.message_id);
+            State.mediaPending.delete(data.message_id);
+            State.mediaLoading.delete(data.message_id);
             State.fullMessageCache.delete(data.message_id);
-            State.mediaLoading.delete(data.message_id); // Добавлено
         },
         
         flushNewPosts() {
             if (State.newPosts.length === 0) return;
             
-            console.log(`Flushing ${State.newPosts.length} new posts`);
-            
             while (State.newPosts.length > 0) {
                 const post = State.newPosts.shift();
                 UI.addPostToTop(post);
-                // Сохраняем КОПИЮ
                 State.posts.set(post.message_id, {...post});
                 State.postOrder.unshift(post.message_id);
             }
@@ -1890,23 +1802,28 @@
         
         reconnect() {
             if (this.giveUp || State.wsReconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS_TOTAL) {
-                console.log('Max reconnection attempts reached, stopping');
                 Toast.error('Lost connection to server. Please refresh the page.');
                 return;
             }
             
             State.wsReconnectAttempts++;
-            const delay = Math.min(
+            
+            const baseDelay = Math.min(
                 CONFIG.RECONNECT_BASE_DELAY * Math.pow(1.5, State.wsReconnectAttempts), 
                 30000
             );
             
-            console.log(`Reconnecting in ${delay}ms (attempt ${State.wsReconnectAttempts}/${CONFIG.MAX_RECONNECT_ATTEMPTS_TOTAL})`);
+            const jitterRange = baseDelay * 0.3;
+            const jitter = (Math.random() * jitterRange * 2) - jitterRange;
+            const delay = Math.max(1000, baseDelay + jitter);
             
             safeSetTimeout(() => {
                 if (!State.wsConnected && !this.giveUp) {
-                    console.log('Attempting to reconnect...');
-                    this.connect();
+                    const lastEventId = State.lastEventId || 0;
+                    const wsUrl = lastEventId > 0 
+                        ? `${CONFIG.WS_BASE}?last_event_id=${lastEventId}`
+                        : CONFIG.WS_BASE;
+                    this.connect(wsUrl);
                 }
             }, delay);
         }
@@ -1961,6 +1878,8 @@
     function init() {
         ThemeManager.init();
         UI.updateChannelInfo();
+        
+        CacheManager.startCleanupInterval();
         
         if (!UI.restoreDOM()) {
             loadInitialAndProcessPending();
