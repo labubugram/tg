@@ -2,7 +2,7 @@
     'use strict';
 
     const CONFIG = {
-        API_BASE: document.querySelector('meta[name="mirror:api-base"]')?.content || 'https://nekhebet.su:8080',
+        API_BASE: document.querySelector('meta[name="mirror:api-base"]')?.content || 'https://nekhebet.su',
         CHANNEL_ID: document.querySelector('meta[name="mirror:channel-id"]')?.content,
         CHANNEL_TITLE: document.querySelector('meta[name="mirror:channel-title"]')?.content,
         CHANNEL_USERNAME: document.querySelector('meta[name="mirror:channel-username"]')?.content,
@@ -15,7 +15,7 @@
         MAX_VISIBLE_POSTS: 100,
         LAZY_LOAD_OFFSET: 500,
         IMAGE_UNLOAD_DISTANCE: 5000,
-        DEDUP_TTL: 500,
+        DEDUP_TTL: 2000, // Увеличено с 500 до 2000ms для edit
         WS_BASE: (() => {
             const apiBase = document.querySelector('meta[name="mirror:api-base"]')?.content;
             return apiBase.replace('http://', 'ws://').replace('https://', 'wss://');
@@ -42,6 +42,7 @@
         mediaCache: new Map(),
         mediaErrorCache: new Set(),
         mediaPollingQueue: new Map(),
+        mediaLoading: new Set(), // Добавлено для предотвращения двойной загрузки
         pendingMedia: new Map(),
         scrollTimeout: null,
         recentMessages: new Map(),
@@ -852,10 +853,17 @@
         },
         
         loadMedia(messageId) {
+            // Предотвращаем двойную загрузку
+            if (State.mediaLoading.has(messageId)) {
+                console.log(`Media already loading for ${messageId}`);
+                return;
+            }
+            
             const post = State.posts.get(messageId);
             if (!post || !post.has_media || post.media_url) return;
             
             console.log(`Loading media for message ${messageId}`);
+            State.mediaLoading.add(messageId);
             
             const pendingMedia = State.pendingMedia.get(messageId);
             if (pendingMedia) {
@@ -866,10 +874,13 @@
                     media_type: pendingMedia.media_type
                 });
                 State.pendingMedia.delete(messageId);
+                State.mediaLoading.delete(messageId);
                 return;
             }
             
             API.fetchMedia(messageId).then(mediaInfo => {
+                State.mediaLoading.delete(messageId);
+                
                 if (mediaInfo && mediaInfo.url) {
                     console.log(`Media loaded for message ${messageId}:`, mediaInfo.url);
                     post.media_url = mediaInfo.url;
@@ -883,6 +894,7 @@
                     this.retryMediaLoad(messageId);
                 }
             }).catch(err => {
+                State.mediaLoading.delete(messageId);
                 console.log(`Media fetch failed for ${messageId}:`, err.message);
                 this.retryMediaLoad(messageId);
             });
@@ -1169,6 +1181,28 @@
                 return false;
             }
             
+            // Получаем текущие данные из State
+            const currentPost = State.posts.get(Number(messageId));
+            
+            // Проверяем, действительно ли есть изменения
+            if (currentPost) {
+                // Сравниваем по edit_date или явным изменениям
+                const hasChanges = 
+                    (data.edit_date && currentPost.edit_date !== data.edit_date) ||
+                    (data.text !== undefined && currentPost.text !== data.text) ||
+                    (data.views !== undefined && currentPost.views !== data.views) ||
+                    (data.forwards !== undefined && currentPost.forwards !== data.forwards) ||
+                    (data.media_url && currentPost.media_url !== data.media_url);
+                
+                if (!hasChanges) {
+                    console.log(`No changes for post ${messageId}`);
+                    return false;
+                }
+                
+                // Обновляем State с КОПИЕЙ данных
+                State.posts.set(Number(messageId), {...currentPost, ...data});
+            }
+            
             console.log(`Updating post ${messageId} in DOM`);
             let changed = false;
             
@@ -1250,7 +1284,7 @@
                 safeSetTimeout(() => postEl.classList.remove('updated'), 2000);
                 console.log(`✅ Post ${messageId} updated successfully`);
             } else {
-                console.log(`No changes for post ${messageId}`);
+                console.log(`No DOM changes for post ${messageId}`);
             }
             
             return changed;
@@ -1289,6 +1323,7 @@
                 API.cancelMediaPoll(messageId);
                 State.pendingMedia.delete(messageId);
                 State.fullMessageCache.delete(messageId);
+                State.mediaLoading.delete(messageId); // Добавлено
                 console.log(`Post ${messageId} removed from DOM`);
             }, 300);
             
@@ -1320,12 +1355,21 @@
             
             posts.forEach(post => {
                 if (post.has_media && !post.media_url) {
-                    MediaManager.loadMedia(post.message_id);
+                    // Используем setTimeout с проверкой, чтобы не дублировать
+                    safeSetTimeout(() => {
+                        MediaManager.loadMedia(post.message_id);
+                    }, 500);
                 }
             });
         },
         
         addPostToTop(post) {
+            // Проверяем, нет ли уже такого поста
+            if (State.posts.has(post.message_id)) {
+                console.log(`Post ${post.message_id} already exists, skipping add`);
+                return;
+            }
+            
             const feed = document.getElementById('feed');
             const postEl = this.createPostElement(post);
             
@@ -1348,7 +1392,6 @@
             this.trimOldPosts();
             
             if (post.has_media && !post.media_url) {
-                // Даем небольшую задержку перед загрузкой медиа
                 safeSetTimeout(() => {
                     MediaManager.loadMedia(post.message_id);
                 }, 500);
@@ -1412,6 +1455,7 @@
                 State.posts.clear();
                 State.postOrder = [];
                 State.pendingMedia.clear();
+                State.mediaLoading.clear(); // Добавлено
                 document.getElementById('feed').innerHTML = '';
                 State.offset = 0;
                 State.hasMore = true;
@@ -1436,7 +1480,8 @@
                     const newMessages = [];
                     data.messages.forEach(post => {
                         if (!State.posts.has(post.message_id)) {
-                            State.posts.set(post.message_id, post);
+                            // Сохраняем КОПИЮ объекта
+                            State.posts.set(post.message_id, {...post});
                             State.postOrder.push(post.message_id);
                             newMessages.push(post);
                         }
@@ -1604,7 +1649,7 @@
                     newPosts.forEach(post => {
                         if (!State.posts.has(post.message_id)) {
                             UI.addPostToTop(post);
-                            State.posts.set(post.message_id, post);
+                            State.posts.set(post.message_id, {...post}); // Копия
                             State.postOrder.unshift(post.message_id);
                         }
                     });
@@ -1646,7 +1691,11 @@
             
             const messageKey = `${data.channel_id}-${data.message_id}-${data.type}`;
             const lastReceived = State.recentMessages.get(messageKey);
-            if (lastReceived && (Date.now() - lastReceived < CONFIG.DEDUP_TTL)) {
+            
+            // Увеличиваем TTL для edit сообщений
+            const ttl = data.type === 'edit' ? 2000 : CONFIG.DEDUP_TTL;
+            
+            if (lastReceived && (Date.now() - lastReceived < ttl)) {
                 console.log('Duplicate message ignored:', messageKey);
                 return;
             }
@@ -1698,8 +1747,18 @@
         
         async handleEditMessage(data) {
             console.log(`Handling edit for message ${data.message_id}`);
+            
+            // Проверяем, есть ли уже данные в сообщении (новая версия сервера)
+            if (data.data) {
+                console.log(`Processing edit with embedded data for message ${data.message_id}`);
+                this.processFullMessage(data.data, true);
+                return;
+            }
+            
+            // Старая версия сервера (без данных) - делаем запрос
+            console.log(`No embedded data, fetching message ${data.message_id} from API`);
             MessageAPI.invalidateMessage(data.message_id);
-
+            
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
                 console.log(`Processing edit for message ${data.message_id} with data:`, fullMessage);
@@ -1714,6 +1773,7 @@
             
             console.log(`Processing ${isEdit ? 'edit' : 'new'} message ${messageId}`);
             
+            // Создаем объект сообщения
             const post = {
                 message_id: messageId,
                 text: fullMessage.text || '',
@@ -1733,31 +1793,27 @@
             
             if (isEdit) {
                 if (existingPost) {
-                    // Обновляем 
-                    State.posts.set(messageId, post);
-                    
-                    // Важно: проверяем, появилось ли медиа
-                    if (!existingPost.media_url && post.media_url) {
-                        console.log(`Media now available for message ${messageId}`);
-                        UI.updatePost(messageId, post);
-                    } else {
-                        // Обычное обновление (текст, дата и т.д.)
-                        UI.updatePost(messageId, post);
+                    // Проверяем, действительно ли есть изменения по edit_date
+                    if (existingPost.edit_date === post.edit_date && 
+                        existingPost.text === post.text &&
+                        existingPost.media_url === post.media_url) {
+                        console.log(`Edit ignored - no changes for message ${messageId}`);
+                        return;
                     }
+                    
+                    console.log(`Updating existing post ${messageId}`);
+                    // Обновляем State с КОПИЕЙ
+                    State.posts.set(messageId, {...post});
+                    
+                    // Обновляем DOM
+                    UI.updatePost(messageId, post);
                 } else {
-                    // Сообщения нет в State - возможно в очереди
-                    console.log(`Post ${messageId} not in State.posts, checking newPosts queue`);
-                    
-                    const indexInNew = State.newPosts.findIndex(p => p.message_id === messageId);
-                    if (indexInNew !== -1) {
-                        console.log(`Updating message ${messageId} in newPosts queue`);
-                        State.newPosts[indexInNew] = post;
-                    } else {
-                        // Это может быть edit для сообщения, которое мы только что добавили
-                        // или сообщение с задержкой медиа - не добавляем повторно
-                        console.log(`Edit for message ${messageId} - might be media ready notification`);
-                        State.posts.set(messageId, post);
-                    }
+                    // Сообщения нет в State - добавляем
+                    console.log(`Post ${messageId} not in State.posts, adding as new`);
+                    State.posts.set(messageId, {...post});
+                    State.postOrder.unshift(messageId);
+                    State.postOrder.sort((a, b) => b - a);
+                    UI.addPostToTop(post);
                 }
             } else {
                 // Новое сообщение
@@ -1765,18 +1821,11 @@
             }
             
             // Загружаем медиа, если оно есть, но еще не загружено
-            if (post.has_media && !post.media_url) {
+            if (post.has_media && !post.media_url && !State.mediaLoading.has(messageId)) {
                 console.log(`Scheduling media load for message ${messageId}`);
-                // Даем небольшую задержку перед первой попыткой загрузки медиа
                 safeSetTimeout(() => {
                     MediaManager.loadMedia(messageId);
                 }, 500);
-            }
-            
-            // Если медиа появилось в edit, но уже было в new - обновляем
-            if (isEdit && existingPost && !existingPost.media_url && post.media_url) {
-                console.log(`Media ready for message ${messageId}, updating immediately`);
-                UI.updatePost(messageId, post);
             }
         },
         
@@ -1790,7 +1839,8 @@
             if (window.scrollY < 200) {
                 console.log('Adding new post immediately:', post.message_id);
                 UI.addPostToTop(post);
-                State.posts.set(post.message_id, post);
+                // Сохраняем КОПИЮ
+                State.posts.set(post.message_id, {...post});
                 State.postOrder.unshift(post.message_id);
                 State.postOrder.sort((a, b) => b - a);
             } else {
@@ -1817,6 +1867,7 @@
             API.cancelMediaPoll(data.message_id);
             State.pendingMedia.delete(data.message_id);
             State.fullMessageCache.delete(data.message_id);
+            State.mediaLoading.delete(data.message_id); // Добавлено
         },
         
         flushNewPosts() {
@@ -1827,7 +1878,8 @@
             while (State.newPosts.length > 0) {
                 const post = State.newPosts.shift();
                 UI.addPostToTop(post);
-                State.posts.set(post.message_id, post);
+                // Сохраняем КОПИЮ
+                State.posts.set(post.message_id, {...post});
                 State.postOrder.unshift(post.message_id);
             }
             
