@@ -1829,37 +1829,6 @@
             MessageAPI.invalidateMessage(data.message_id);
         },
         
-        async handleNewMessage(data) {
-            if (State.posts.has(data.message_id)) {
-                return;
-            }
-            
-            if (data.data) {
-                // Передаем флаг, что это новое сообщение (не редактирование)
-                this.processFullMessage(data.data, false, true); // true = isNew=true
-                return;
-            }
-            
-            const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
-            if (fullMessage) {
-                this.processFullMessage(fullMessage, false, true); // true = isNew=true
-            }
-        },
-
-        async handleEditMessage(data) {
-            if (data.data) {
-                this.processFullMessage(data.data, true, false); // true = isEdit, false = not new
-                return;
-            }
-            
-            MessageAPI.invalidateMessage(data.message_id);
-            
-            const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
-            if (fullMessage) {
-                this.processFullMessage(fullMessage, true, false); // true = isEdit, false = not new
-            }
-        },
-
         processFullMessage(fullMessage, isEdit = false, isNew = false) {
             const messageId = fullMessage.message_id;
             
