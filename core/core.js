@@ -1430,12 +1430,19 @@
             
             const feed = document.getElementById('feed');
             const postEl = this.createPostElement(post);
-            
+
             if (feed.firstChild) {
                 feed.insertBefore(postEl, feed.firstChild);
             } else {
                 feed.appendChild(postEl);
             }
+
+            State.posts.set(post.message_id, {...post});
+            if (!State.postOrder.includes(post.message_id)) {
+                State.postOrder.unshift(post.message_id);
+            }
+
+            postEl.offsetHeight;
             
             requestAnimationFrame(() => {
                 postEl.classList.add('visible', 'new');
@@ -1454,8 +1461,6 @@
                     MediaManager.loadMedia(post.message_id);
                 }, 500);
             }
-            
-            State.postOrder.sort((a, b) => b - a);
         },
         
         setLoaderVisible(visible) {
