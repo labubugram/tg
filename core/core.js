@@ -1909,20 +1909,23 @@
         flushNewPosts() {
             if (State.newPosts.length === 0) return;
             
+            console.log('Flushing new posts:', State.newPosts.map(p => p.message_id));
+            
             const postsToFlush = State.newPosts.slice();
             State.newPosts = [];
             
             postsToFlush.sort((a, b) => b.message_id - a.message_id);
             
             postsToFlush.forEach(post => {
+                console.log('Adding post to top:', post.message_id);
                 UI.addPostToTop(post);
-                State.posts.set(post.message_id, {...post});
-                State.postOrder.unshift(post.message_id);
             });
             
             State.postOrder.sort((a, b) => b - a);
             UI.updateNewPostsBadge();
             Toast.success('New messages loaded');
+            
+            console.log('Current posts:', Array.from(State.posts.keys()));
         },
         
         reconnect() {
