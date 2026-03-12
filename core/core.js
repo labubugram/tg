@@ -1711,13 +1711,11 @@
                     const newPosts = data.posts.reverse();
                     newPosts.forEach(post => {
                         if (!State.posts.has(post.message_id)) {
-                            UI.addPostToTop(post);
-                            State.posts.set(post.message_id, {...post});
-                            State.postOrder.unshift(post.message_id);
+                            // ВАЖНО: используем processFullMessage, а не addPost
+                            this.processFullMessage(post, false, true);
                         }
                     });
                     
-                    State.postOrder.sort((a, b) => b - a);
                     Toast.info(`Loaded ${newPosts.length} missed messages`);
                 }
             } catch (err) {
@@ -1868,24 +1866,29 @@
                 }
             } else if (isNew) {
                 // НОВОЕ сообщение - должно учитывать скролл
+                // ВАЖНО: Проверяем и в State.posts, и в очереди
+                const isInQueue = State.newPosts.some(p => p.message_id === messageId);
+                
+                if (isInQueue) {
+                    return; // Уже в очереди
+                }
+                
+                if (State.posts.has(messageId)) {
+                    return; // Уже добавлено
+                }
+                
                 if (window.scrollY < 400) {
                     // Пользователь наверху - добавляем сразу
-                    if (!State.posts.has(messageId)) {
-                        UI.addPostToTop(post);
-                        State.posts.set(messageId, {...post});
-                        State.postOrder.unshift(messageId);
-                        State.postOrder.sort((a, b) => b - a);
-                    }
+                    UI.addPostToTop(post);
+                    State.posts.set(messageId, {...post});
+                    State.postOrder.unshift(messageId);
+                    State.postOrder.sort((a, b) => b - a);
                 } else {
-                    // Пользователь не наверху - добавляем в очередь
-                    if (!State.posts.has(messageId)) {
-                        const existsInQueue = State.newPosts.some(p => p.message_id === messageId);
-                        if (!existsInQueue) {
-                            State.newPosts.push(post);
-                            State.newPosts.sort((a, b) => b.message_id - a.message_id);
-                            UI.updateNewPostsBadge();
-                        }
-                    }
+                    // Пользователь не наверху - добавляем ТОЛЬКО в очередь
+                    State.newPosts.push(post);
+                    State.newPosts.sort((a, b) => b.message_id - a.message_id);
+                    UI.updateNewPostsBadge();
+                    // НЕ добавляем в State.posts!
                 }
             }
             
@@ -1932,22 +1935,31 @@
             if (State.newPosts.length === 0) return;
             
             console.log('Flushing new posts:', State.newPosts.map(p => p.message_id));
+            console.log('Before flush - State.posts:', Array.from(State.posts.keys()));
             
             const postsToFlush = State.newPosts.slice();
             State.newPosts = [];
             
+            // Сортируем от новых к старым
             postsToFlush.sort((a, b) => b.message_id - a.message_id);
             
             postsToFlush.forEach(post => {
                 console.log('Adding post to top:', post.message_id);
-                UI.addPostToTop(post);
+                console.log('In State.posts before add?', State.posts.has(post.message_id));
+                
+                // Убеждаемся, что поста нет в State.posts
+                if (!State.posts.has(post.message_id)) {
+                    UI.addPostToTop(post);
+                    // State.posts.set уже внутри addPostToTop
+                } else {
+                    console.log('ERROR: Post already in State.posts!', post.message_id);
+                }
             });
             
-            State.postOrder.sort((a, b) => b - a);
             UI.updateNewPostsBadge();
             Toast.success('New messages loaded');
             
-            console.log('Current posts:', Array.from(State.posts.keys()));
+            console.log('After flush - State.posts:', Array.from(State.posts.keys()));
         },
         
         reconnect() {
