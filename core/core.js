@@ -85,7 +85,6 @@
             State.wsPingInterval = null;
         }
         
-        // NEW: очищаем все таймауты повторных попыток
         State.mediaRetryTimeouts.forEach(clearTimeout);
         State.mediaRetryTimeouts.clear();
     }
@@ -809,9 +808,7 @@
             return false;
         },
         
-        // NEW: чистая функция для повторной попытки загрузки медиа
         retryMedia(messageId) {
-            // Очищаем старый таймаут если есть
             if (State.mediaRetryTimeouts.has(messageId)) {
                 clearTimeout(State.mediaRetryTimeouts.get(messageId));
                 State.mediaRetryTimeouts.delete(messageId);
@@ -826,21 +823,19 @@
                 return;
             }
             
-            // Экспоненциальная задержка с jitter
             const delay = CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.5, retryCount) + (Math.random() * 1000);
             
             console.log(`Scheduling retry ${retryCount + 1}/${CONFIG.MEDIA_MAX_RETRIES} for message ${messageId} in ${Math.round(delay)}ms`);
             
             const timeoutId = safeSetTimeout(() => {
                 State.mediaRetryTimeouts.delete(messageId);
-                this.loadMedia(messageId, true); // true = это повторная попытка
+                this.loadMedia(messageId, true);
             }, delay);
             
             State.mediaRetryTimeouts.set(messageId, timeoutId);
         },
         
         loadMedia(messageId, isRetry = false) {
-            // Проверяем не грузится ли уже
             if (State.mediaLoading.has(messageId)) {
                 return;
             }
@@ -848,17 +843,14 @@
             const post = State.posts.get(messageId);
             if (!post || !post.has_media) return;
             
-            // Если медиа уже загружено или помечено как ошибочное - выходим
             if (post.media_url) return;
             if (State.mediaErrorCache.has(messageId)) return;
             
-            // Обновляем UI если это повторная попытка и там все еще pending
             if (isRetry) {
                 const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
                 if (postEl) {
                     const pendingEl = postEl.querySelector('.media-pending, .media-loading');
                     if (!pendingEl) {
-                        // Если UI уже показал unavailable, но мы все еще пробуем - возвращаем loading
                         const unavailableEl = postEl.querySelector('.media-unavailable');
                         if (unavailableEl) {
                             unavailableEl.outerHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
@@ -872,7 +864,6 @@
             API.fetchMediaOnce(messageId).then(mediaInfo => {
                 State.mediaLoading.delete(messageId);
                 
-                // Успех - есть URL
                 if (mediaInfo && mediaInfo.url) {
                     console.log(`Media loaded for message ${messageId} after ${State.mediaRetryCount.get(messageId) || 0} retries`);
                     post.media_url = mediaInfo.url;
@@ -885,17 +876,14 @@
                     return;
                 }
                 
-                // Специальная обработка 404 - всегда повторяем, так как файл физически есть
                 if (mediaInfo && mediaInfo.error === 'not_found') {
                     const currentRetries = State.mediaRetryCount.get(messageId) || 0;
                     State.mediaRetryCount.set(messageId, currentRetries + 1);
                     
-                    // Показываем пользователю, что медиа грузится (не показываем ошибку!)
                     const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
                     if (postEl) {
                         const container = postEl.querySelector('.media-loading, .media-pending');
                         if (!container) {
-                            // Если контейнера нет - создаем loading
                             const postContent = postEl.querySelector('.post-content');
                             if (postContent && !postContent.querySelector('.media-loading, .media-pending')) {
                                 postContent.insertAdjacentHTML('beforeend', '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>');
@@ -907,7 +895,6 @@
                     return;
                 }
                 
-                // Другие ошибки - тоже повторяем, но с меньшим энтузиазмом
                 const currentRetries = State.mediaRetryCount.get(messageId) || 0;
                 State.mediaRetryCount.set(messageId, currentRetries + 1);
                 
@@ -944,7 +931,6 @@
                 });
             }
             
-            // Очищаем все состояния
             State.mediaPending.delete(messageId);
             State.mediaLoading.delete(messageId);
             State.mediaRetryCount.delete(messageId);
@@ -1191,8 +1177,6 @@
             if (post.media_url) {
                 mediaHTML = this.renderMedia(post.media_url, post.media_type, true);
             } else if (post.has_media) {
-                // NEW: всегда показываем загрузку, даже если были ошибки в прошлом
-                // (кроме случая, когда превышено максимальное количество попыток)
                 const retryCount = State.mediaRetryCount.get(post.message_id) || 0;
                 if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
                     mediaHTML = '<div class="media-unavailable">📷 Media unavailable</div>';
@@ -1424,43 +1408,77 @@
         },
         
         addPostToTop(post) {
-            if (State.posts.has(post.message_id)) {
+            const messageId = post.message_id;
+            
+            // 1. Проверяем DOM в первую очередь
+            const existingEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+            if (existingEl) {
+                // Если элемент есть, но данные изменились - обновляем
+                if (State.posts.has(messageId)) {
+                    const currentPost = State.posts.get(messageId);
+                    if (currentPost.text !== post.text || 
+                        currentPost.media_url !== post.media_url ||
+                        currentPost.views !== post.views) {
+                        UI.updatePost(messageId, post);
+                    }
+                }
                 return;
             }
             
+            // 2. Есть в State, но нет в DOM - чистим State
+            if (State.posts.has(messageId)) {
+                console.warn(`🔧 Fixing desync: post ${messageId} in State but not in DOM`);
+                State.posts.delete(messageId);
+                
+                const index = State.postOrder.indexOf(messageId);
+                if (index !== -1) State.postOrder.splice(index, 1);
+            }
+            
+            // 3. Удаляем из очереди если там есть
+            const queueIndex = State.newPosts.findIndex(p => p.message_id === messageId);
+            if (queueIndex !== -1) {
+                State.newPosts.splice(queueIndex, 1);
+            }
+            
+            // 4. Добавляем в DOM
             const feed = document.getElementById('feed');
             const postEl = this.createPostElement(post);
-
+            
             if (feed.firstChild) {
                 feed.insertBefore(postEl, feed.firstChild);
             } else {
                 feed.appendChild(postEl);
             }
-
-            State.posts.set(post.message_id, {...post});
-            if (!State.postOrder.includes(post.message_id)) {
-                State.postOrder.unshift(post.message_id);
-            }
-
-            postEl.offsetHeight;
             
+            // 5. Добавляем в State
+            State.posts.set(messageId, {...post});
+            if (!State.postOrder.includes(messageId)) {
+                State.postOrder.unshift(messageId);
+            }
+            
+            // 6. Анимация
+            postEl.offsetHeight; // force reflow
             requestAnimationFrame(() => {
                 postEl.classList.add('visible', 'new');
             });
             
             safeSetTimeout(() => postEl.classList.remove('new'), 3000);
             
+            // 7. Наблюдение
             if (this.observer) {
                 this.observer.observe(postEl);
             }
             
             this.trimOldPosts();
             
+            // 8. Загрузка медиа
             if (post.has_media && !post.media_url) {
                 safeSetTimeout(() => {
-                    MediaManager.loadMedia(post.message_id);
+                    MediaManager.loadMedia(messageId);
                 }, 500);
             }
+            
+            console.log(`✅ Post ${messageId} successfully added to top`);
         },
         
         setLoaderVisible(visible) {
@@ -1710,8 +1728,7 @@
                 if (data.posts && data.posts.length > 0) {
                     const newPosts = data.posts.reverse();
                     newPosts.forEach(post => {
-                        // ВАЖНО: используем processFullMessage, а не addPostToTop
-                        this.processFullMessage(post, false, true); // isNew = true
+                        this.processFullMessage(post, false, true);
                     });
                     
                     Toast.info(`Loaded ${newPosts.length} missed messages`);
@@ -1734,10 +1751,6 @@
             }
             
             if (['ping', 'pong', 'welcome', 'heartbeat', 'buffering', 'flush_start', 'flush_complete', 'subscribed', 'error'].includes(data.type)) {
-                if (data.type === 'subscribed') {
-                }
-                if (data.type === 'welcome') {
-                }
                 return;
             }
             
@@ -1795,20 +1808,19 @@
             }
             
             if (data.data) {
-                // Передаем флаг, что это новое сообщение (не редактирование)
-                this.processFullMessage(data.data, false, true); // true = isNew=true
+                this.processFullMessage(data.data, false, true);
                 return;
             }
             
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
-                this.processFullMessage(fullMessage, false, true); // true = isNew=true
+                this.processFullMessage(fullMessage, false, true);
             }
         },
         
         async handleEditMessage(data) {
             if (data.data) {
-                this.processFullMessage(data.data, true, false); // true = isEdit, false = not new
+                this.processFullMessage(data.data, true, false);
                 return;
             }
             
@@ -1816,7 +1828,7 @@
             
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
-                this.processFullMessage(fullMessage, true, false); // true = isEdit, false = not new
+                this.processFullMessage(fullMessage, true, false);
             }
         },   
         
@@ -1845,7 +1857,6 @@
             const existingPost = State.posts.get(messageId);
             
             if (isEdit) {
-                // Редактирование существующего поста
                 if (existingPost) {
                     if (existingPost.edit_date === post.edit_date && 
                         existingPost.text === post.text &&
@@ -1856,37 +1867,28 @@
                     State.posts.set(messageId, {...post});
                     UI.updatePost(messageId, post);
                 } else {
-                    // Пост не существует - добавляем как новый
                     State.posts.set(messageId, {...post});
                     State.postOrder.unshift(messageId);
                     State.postOrder.sort((a, b) => b - a);
                     UI.addPostToTop(post);
                 }
             } else if (isNew) {
-                // НОВОЕ сообщение - должно учитывать скролл
-                // ВАЖНО: Проверяем и в State.posts, и в очереди
                 const isInQueue = State.newPosts.some(p => p.message_id === messageId);
                 
                 if (isInQueue) {
-                    return; // Уже в очереди
+                    return;
                 }
                 
                 if (State.posts.has(messageId)) {
-                    return; // Уже добавлено
+                    return;
                 }
                 
                 if (window.scrollY < 400) {
-                    // Пользователь наверху - добавляем сразу
                     UI.addPostToTop(post);
-                    State.posts.set(messageId, {...post});
-                    State.postOrder.unshift(messageId);
-                    State.postOrder.sort((a, b) => b - a);
                 } else {
-                    // Пользователь не наверху - добавляем ТОЛЬКО в очередь
                     State.newPosts.push(post);
                     State.newPosts.sort((a, b) => b.message_id - a.message_id);
                     UI.updateNewPostsBadge();
-                    // НЕ добавляем в State.posts!
                 }
             }
             
@@ -1894,26 +1896,6 @@
                 safeSetTimeout(() => {
                     MediaManager.loadMedia(messageId);
                 }, 500);
-            }
-        },
-        
-        addPost(post) {
-            if (State.posts.has(post.message_id)) {
-                return;
-            }
-            
-            if (window.scrollY < 400) {
-                UI.addPostToTop(post);
-                State.posts.set(post.message_id, {...post});
-                State.postOrder.unshift(post.message_id);
-                State.postOrder.sort((a, b) => b - a);
-            } else {
-                const existsInQueue = State.newPosts.some(p => p.message_id === post.message_id);
-                if (!existsInQueue) {
-                    State.newPosts.push(post);
-                    State.newPosts.sort((a, b) => b.message_id - a.message_id);
-                    UI.updateNewPostsBadge();
-                }
             }
         },
         
@@ -1938,26 +1920,28 @@
             const postsToFlush = State.newPosts.slice();
             State.newPosts = [];
             
-            // Сортируем от новых к старым
             postsToFlush.sort((a, b) => b.message_id - a.message_id);
             
+            let addedCount = 0;
             postsToFlush.forEach(post => {
-                console.log('Adding post to top:', post.message_id);
-                console.log('In State.posts before add?', State.posts.has(post.message_id));
-                
-                // Убеждаемся, что поста нет в State.posts
-                if (!State.posts.has(post.message_id)) {
-                    UI.addPostToTop(post);
-                    // State.posts.set уже внутри addPostToTop
-                } else {
-                    console.log('ERROR: Post already in State.posts!', post.message_id);
+                const inDOM = document.querySelector(`.post[data-message-id="${post.message_id}"]`);
+                if (inDOM) {
+                    console.log(`Post ${post.message_id} already in DOM, skipping`);
+                    return;
                 }
+                
+                UI.addPostToTop(post);
+                addedCount++;
             });
             
             UI.updateNewPostsBadge();
-            Toast.success('New messages loaded');
+            
+            if (addedCount > 0) {
+                Toast.success(`Loaded ${addedCount} new messages`);
+            }
             
             console.log('After flush - State.posts:', Array.from(State.posts.keys()));
+            console.log('After flush - DOM posts:', Array.from(document.querySelectorAll('.post')).map(el => el.dataset.messageId));
         },
         
         reconnect() {
@@ -2063,8 +2047,8 @@
         document.getElementById('channelAvatar').addEventListener('click', () => ThemeManager.toggle());
         
         document.getElementById('newPostsBadge').addEventListener('click', () => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
             WebSocketManager.flushNewPosts();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         });
         
         document.getElementById('scrollTopBtn').addEventListener('click', () => {
