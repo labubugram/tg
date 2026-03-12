@@ -13,7 +13,7 @@
         MAX_VISIBLE_POSTS: 100,
         LAZY_LOAD_OFFSET: 500,
         IMAGE_UNLOAD_DISTANCE: 5000,
-        DEDUP_TTL: 2000,
+        DEDUP_TTL: 200,
         WS_BASE: (() => {
             const apiBase = document.querySelector('meta[name="mirror:api-base"]')?.content;
             return apiBase.replace('http://', 'ws://').replace('https://', 'wss://');
