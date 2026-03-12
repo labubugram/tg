@@ -26,7 +26,8 @@
         MEDIA_READY_TIMEOUT: 60000,
         MAX_CACHE_SIZE: 200,
         MAX_MEDIA_CACHE_SIZE: 100,
-        CLEANUP_INTERVAL: 60000
+        CLEANUP_INTERVAL: 60000,
+        MEDIA_RETRY_TIMEOUT: 10000 // NEW: таймаут для повторной попытки загрузки медиа
     };
 
     const State = {
@@ -800,7 +801,30 @@
             const post = State.posts.get(messageId);
             if (!post || !post.has_media) return;
             
+            // FIX: Если URL уже есть, медиа загружено
             if (post.media_url) return;
+            
+            // FIX: Проверяем, не висит ли это сообщение в состоянии pending слишком долго
+            if (State.mediaPending.has(messageId)) {
+                const pendingInfo = State.mediaPending.get(messageId);
+                // Если запись о pending есть, но она старая (>10 секунд), удаляем её и пробуем снова
+                if (pendingInfo && pendingInfo.timestamp && (Date.now() - pendingInfo.timestamp > CONFIG.MEDIA_RETRY_TIMEOUT)) {
+                    console.log(`Media pending for ${messageId} timed out, retrying.`);
+                    State.mediaPending.delete(messageId);
+                    
+                    // Также чистим DOM-элемент, если он все еще показывает "pending"
+                    const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                    if (postEl) {
+                        const pendingEl = postEl.querySelector('.media-pending');
+                        if (pendingEl) {
+                            pendingEl.outerHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                        }
+                    }
+                } else {
+                    // Если pending свежий, просто выходим
+                    return;
+                }
+            }
             
             State.mediaLoading.add(messageId);
             
@@ -820,6 +844,7 @@
                         media_type: post.media_type
                     });
                 } else {
+                    // FIX: Сохраняем timestamp при установке pending
                     State.mediaPending.set(messageId, {
                         message_id: messageId,
                         timestamp: Date.now()
@@ -836,6 +861,7 @@
                 }
             }).catch(err => {
                 State.mediaLoading.delete(messageId);
+                // FIX: Сохраняем timestamp при ошибке
                 State.mediaPending.set(messageId, {
                     message_id: messageId,
                     timestamp: Date.now(),
@@ -1760,7 +1786,8 @@
                 return;
             }
             
-            if (window.scrollY < 200) {
+            // FIX: Увеличиваем порог для немедленного показа
+            if (window.scrollY < 400) {
                 UI.addPostToTop(post);
                 State.posts.set(post.message_id, {...post});
                 State.postOrder.unshift(post.message_id);
@@ -1769,6 +1796,8 @@
                 const existsInQueue = State.newPosts.some(p => p.message_id === post.message_id);
                 if (!existsInQueue) {
                     State.newPosts.push(post);
+                    // FIX: Сортируем очередь для сохранения порядка
+                    State.newPosts.sort((a, b) => b.message_id - a.message_id);
                     UI.updateNewPostsBadge();
                 }
             }
@@ -1788,12 +1817,19 @@
         flushNewPosts() {
             if (State.newPosts.length === 0) return;
             
-            while (State.newPosts.length > 0) {
-                const post = State.newPosts.shift();
+            // FIX: Копируем очередь и очищаем оригинал
+            const postsToFlush = State.newPosts.slice();
+            State.newPosts = [];
+            
+            // FIX: Сортируем копию для гарантии правильного порядка
+            postsToFlush.sort((a, b) => b.message_id - a.message_id);
+            
+            // FIX: Вставляем все сообщения
+            postsToFlush.forEach(post => {
                 UI.addPostToTop(post);
                 State.posts.set(post.message_id, {...post});
                 State.postOrder.unshift(post.message_id);
-            }
+            });
             
             State.postOrder.sort((a, b) => b - a);
             UI.updateNewPostsBadge();
