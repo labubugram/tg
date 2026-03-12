@@ -21,13 +21,10 @@
         SYNC_AFTER_RECONNECT: true,
         PING_INTERVAL: 30000,
         API_VERSION: 'v1',
-        MAX_RECONNECT_ATTEMPTS_TOTAL: 10,
         RECONNECT_GIVE_UP_DELAY: 300000,
-        MEDIA_READY_TIMEOUT: 60000, 
         MAX_CACHE_SIZE: 200,
         MAX_MEDIA_CACHE_SIZE: 100,
         CLEANUP_INTERVAL: 60000,
-        MEDIA_RETRY_TIMEOUT: 5000, 
         MEDIA_MAX_RETRIES: 5,
         MEDIA_RETRY_DELAY: 2000
     };
@@ -47,7 +44,7 @@
         mediaLoading: new Set(),
         mediaPending: new Map(),
         mediaRetryCount: new Map(),
-        mediaRetryTimeouts: new Map(), 
+        mediaRetryTimeouts: new Map(),
         scrollTimeout: null,
         recentMessages: new Map(),
         lastDocumentHeight: 0,
@@ -598,7 +595,6 @@
                 
                 if (!response.ok) {
                     if (response.status === 404) {
-                        console.log(`Media 404 for message ${messageId}, will retry later`);
                         return { error: 'not_found', status: 404, retry: true };
                     }
                     throw new Error(`HTTP ${response.status}`);
@@ -795,7 +791,7 @@
                     const placeholder = mediaContainer.querySelector('.media-placeholder');
                     if (placeholder) placeholder.remove();
                     
-                    const html = UI.renderMedia(post.media_url, post.media_type, false);
+                    const html = UI.renderMedia(post.media_url, post.media_type);
                     this.replaceMediaContainer(postEl, html, messageId);
                     
                     const newVideo = postEl.querySelector('video');
@@ -817,15 +813,12 @@
             const retryCount = State.mediaRetryCount.get(messageId) || 0;
             
             if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
-                console.log(`Media for message ${messageId} exceeded max retries (${CONFIG.MEDIA_MAX_RETRIES}), marking as unavailable`);
                 UI.updatePostMediaUnavailable(messageId, 'max_retries');
                 State.mediaRetryCount.delete(messageId);
                 return;
             }
             
             const delay = CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.5, retryCount) + (Math.random() * 1000);
-            
-            console.log(`Scheduling retry ${retryCount + 1}/${CONFIG.MEDIA_MAX_RETRIES} for message ${messageId} in ${Math.round(delay)}ms`);
             
             const timeoutId = safeSetTimeout(() => {
                 State.mediaRetryTimeouts.delete(messageId);
@@ -865,7 +858,6 @@
                 State.mediaLoading.delete(messageId);
                 
                 if (mediaInfo && mediaInfo.url) {
-                    console.log(`Media loaded for message ${messageId} after ${State.mediaRetryCount.get(messageId) || 0} retries`);
                     post.media_url = mediaInfo.url;
                     post.media_type = mediaInfo.file_type || post.media_type;
                     UI.updatePost(messageId, {
@@ -904,7 +896,7 @@
                     UI.updatePostMediaUnavailable(messageId, 'error');
                 }
                 
-            }).catch(err => {
+            }).catch(() => {
                 State.mediaLoading.delete(messageId);
                 
                 const currentRetries = State.mediaRetryCount.get(messageId) || 0;
@@ -919,8 +911,6 @@
         },
         
         handleMediaReady(messageId, mediaUrl, mediaType) {
-            console.log(`Media ready for message ${messageId}, updating UI`);
-            
             const post = State.posts.get(messageId);
             if (post) {
                 post.media_url = mediaUrl;
@@ -1085,7 +1075,7 @@
             }
         },
         
-        renderMedia(url, type, addClickPlaceholder = true) {
+        renderMedia(url, type) {
             if (!url) return '';
             const fullUrl = url.startsWith('http') ? url : `${CONFIG.API_BASE}${url}`;
             
@@ -1105,8 +1095,6 @@
                 isVideo = true;
             }
             
-            const dataAttr = addClickPlaceholder ? '' : ' data-media-container="true"';
-            
             if (isVideo) {
                 const isGifLike = 
                     fullUrl.match(/\.gif$/i) || 
@@ -1120,7 +1108,7 @@
                 
                 if (isGifLike) {
                     return `
-                        <div class="media-container"${dataAttr}>
+                        <div class="media-container">
                             <video 
                                 src="${fullUrl}" 
                                 autoplay 
@@ -1135,7 +1123,7 @@
                     `;
                 } else {
                     return `
-                        <div class="media-container"${dataAttr}>
+                        <div class="media-container">
                             <video 
                                 src="${fullUrl}" 
                                 controls 
@@ -1149,7 +1137,7 @@
                 }
             } else {
                 return `
-                    <div class="media-container"${dataAttr}>
+                    <div class="media-container">
                         <img
                             src="${fullUrl}"
                             alt="Media"
@@ -1175,7 +1163,7 @@
             
             let mediaHTML = '';
             if (post.media_url) {
-                mediaHTML = this.renderMedia(post.media_url, post.media_type, true);
+                mediaHTML = this.renderMedia(post.media_url, post.media_type);
             } else if (post.has_media) {
                 const retryCount = State.mediaRetryCount.get(post.message_id) || 0;
                 if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
@@ -1295,7 +1283,7 @@
             if (data.media_url) {
                 const mediaContainer = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-pending');
                 if (mediaContainer) {
-                    const newMedia = this.renderMedia(data.media_url, data.media_type, true);
+                    const newMedia = this.renderMedia(data.media_url, data.media_type);
                     MediaManager.replaceMediaContainer(postEl, newMedia, messageId);
                     
                     postEl.dataset.mediaUrl = data.media_url;
@@ -1304,7 +1292,7 @@
                 } else {
                     const postContent = postEl.querySelector('.post-content');
                     if (postContent) {
-                        const newMedia = this.renderMedia(data.media_url, data.media_type, true);
+                        const newMedia = this.renderMedia(data.media_url, data.media_type);
                         postContent.insertAdjacentHTML('beforeend', newMedia);
                         
                         postEl.dataset.mediaUrl = data.media_url;
@@ -1410,10 +1398,8 @@
         addPostToTop(post) {
             const messageId = post.message_id;
             
-            // 1. Проверяем DOM в первую очередь
             const existingEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (existingEl) {
-                // Если элемент есть, но данные изменились - обновляем
                 if (State.posts.has(messageId)) {
                     const currentPost = State.posts.get(messageId);
                     if (currentPost.text !== post.text || 
@@ -1425,26 +1411,20 @@
                 return;
             }
             
-            // 2. Есть в State, но нет в DOM - чистим State
             if (State.posts.has(messageId)) {
-                console.warn(`🔧 Fixing desync: post ${messageId} in State but not in DOM`);
                 State.posts.delete(messageId);
-                
                 const index = State.postOrder.indexOf(messageId);
                 if (index !== -1) State.postOrder.splice(index, 1);
             }
             
-            // 3. Удаляем из очереди если там есть
             const queueIndex = State.newPosts.findIndex(p => p.message_id === messageId);
             if (queueIndex !== -1) {
                 State.newPosts.splice(queueIndex, 1);
             }
             
-            // 4. Добавляем в DOM
             const feed = document.getElementById('feed');
             const postEl = this.createPostElement(post);
             
-            // Вставляем в правильном порядке (по убыванию ID)
             let inserted = false;
             for (const child of feed.children) {
                 const childId = parseInt(child.dataset.messageId);
@@ -1463,36 +1443,30 @@
                 }
             }
             
-            // 5. Добавляем в State
             State.posts.set(messageId, {...post});
             if (!State.postOrder.includes(messageId)) {
                 State.postOrder.unshift(messageId);
                 State.postOrder.sort((a, b) => b - a);
             }
             
-            // 6. Анимация
-            postEl.offsetHeight; // force reflow
+            postEl.offsetHeight;
             requestAnimationFrame(() => {
                 postEl.classList.add('visible', 'new');
             });
             
             safeSetTimeout(() => postEl.classList.remove('new'), 3000);
             
-            // 7. Наблюдение
             if (this.observer) {
                 this.observer.observe(postEl);
             }
             
             this.trimOldPosts();
             
-            // 8. Загрузка медиа
             if (post.has_media && !post.media_url) {
                 safeSetTimeout(() => {
                     MediaManager.loadMedia(messageId);
                 }, 500);
             }
-            
-            console.log(`✅ Post ${messageId} successfully added to top`);
         },
         
         setLoaderVisible(visible) {
@@ -1613,37 +1587,12 @@
         }
     };
 
-    const Toast = {
-        show(message, type = 'info', duration = 3000) {
-            const container = document.getElementById('toastContainer');
-            if (!container) return;
-            
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            const icons = { info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌' };
-            toast.innerHTML = `${icons[type] || 'ℹ️'} ${message}`;
-            
-            container.appendChild(toast);
-            
-            safeSetTimeout(() => {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translate(-50%, 20px)';
-                safeSetTimeout(() => toast.remove(), 300);
-            }, duration);
-        },
-        info(message) { this.show(message, 'info'); },
-        success(message) { this.show(message, 'success'); },
-        warning(message) { this.show(message, 'warning'); },
-        error(message) { this.show(message, 'error'); }
-    };
-
     async function loadInitialAndProcessPending() {
         UI.showSkeletonLoaders();
         await MessageLoader.loadMessages(true);
         
         State.initialLoadComplete = true;
         
-        // Обрабатываем накопленные события с правильными типами
         while (State.pendingEvents.length > 0) {
             const event = State.pendingEvents.shift();
             WebSocketManager.processFullMessage(event.data, event.type);
@@ -1660,7 +1609,6 @@
             if (!this.giveUpTimer) {
                 this.giveUpTimer = safeSetTimeout(() => {
                     this.giveUp = true;
-                    Toast.error('Unable to connect to server. Please refresh the page.');
                 }, CONFIG.RECONNECT_GIVE_UP_DELAY);
             }
             
@@ -1678,7 +1626,6 @@
                     this.giveUp = false;
                     
                     UI.updateConnectionStatus(true);
-                    Toast.success('Connected to server');
                     
                     if (CONFIG.CHANNEL_ID) {
                         const subscribeMsg = {
@@ -1711,7 +1658,6 @@
                 State.ws.onclose = () => {
                     State.wsConnected = false;
                     UI.updateConnectionStatus(false);
-                    Toast.warning('Disconnected from server');
                     
                     if (State.wsPingInterval) {
                         clearInterval(State.wsPingInterval);
@@ -1745,8 +1691,6 @@
                     newPosts.forEach(post => {
                         this.processFullMessage(post, 'new');
                     });
-                    
-                    Toast.info(`Loaded ${newPosts.length} missed messages`);
                 }
             } catch (err) {
                 console.error('Sync after reconnect failed:', err);
@@ -1765,12 +1709,10 @@
                 return;
             }
             
-            // Пропускаем системные сообщения
             if (['ping', 'pong', 'welcome', 'heartbeat', 'buffering', 'flush_start', 'flush_complete', 'subscribed', 'error'].includes(data.type)) {
                 return;
             }
             
-            // Проверяем версию для не-системных сообщений
             if (data.version !== '2.0') {
                 return;
             }
@@ -1785,7 +1727,6 @@
                 return;
             }
             
-            // Дедупликация
             const messageKey = `${data.channel_id}-${data.message_id}-${data.type}`;
             const lastReceived = State.recentMessages.get(messageKey);
             const ttl = data.type === 'edit' ? 2000 : CONFIG.DEDUP_TTL;
@@ -1796,7 +1737,6 @@
             
             State.recentMessages.set(messageKey, Date.now());
             
-            // Очистка старых ключей
             if (State.recentMessages.size > 100) {
                 const now = Date.now();
                 for (const [key, time] of State.recentMessages.entries()) {
@@ -1804,7 +1744,6 @@
                 }
             }
             
-            // Обработка по типу
             switch (data.type) {
                 case 'new':
                     this.handleNewMessage(data);
@@ -1818,8 +1757,6 @@
                 case 'media_ready':
                     this.handleMediaReady(data);
                     break;
-                default:
-                    console.log('Unknown message type:', data.type);
             }
         },
         
@@ -1856,11 +1793,7 @@
         
         processFullMessage(fullMessage, type = 'new') {
             const messageId = fullMessage.message_id;
-            
-            // Нормализуем тип
             const actualType = type === 'edit' ? 'edit' : 'new';
-            
-            console.log(`📨 Processing ${actualType} message:`, messageId);
             
             const post = {
                 message_id: messageId,
@@ -1881,26 +1814,21 @@
             const existingInDOM = document.querySelector(`.post[data-message-id="${messageId}"]`);
             
             if (actualType === 'edit') {
-                // Редактирование - обновляем где бы ни было
                 if (existingInDOM) {
                     UI.updatePost(messageId, post);
                     if (existingPost) {
                         State.posts.set(messageId, {...post});
                     }
                 } else if (existingInQueue) {
-                    // Обновляем в очереди
                     const index = State.newPosts.findIndex(p => p.message_id === messageId);
                     if (index !== -1) {
                         State.newPosts[index] = {...post};
                     }
                 } else if (existingPost) {
-                    // Только в State, но не в DOM - обновляем State
                     State.posts.set(messageId, {...post});
                 }
             } else {
-                // Новое сообщение
                 if (existingInDOM || existingPost || existingInQueue) {
-                    console.log(`Post ${messageId} already exists, skipping`);
                     return;
                 }
                 
@@ -1934,39 +1862,23 @@
         flushNewPosts() {
             if (State.newPosts.length === 0) return;
             
-            console.log('Flushing new posts:', State.newPosts.map(p => p.message_id));
-            console.log('Before flush - State.posts:', Array.from(State.posts.keys()));
-            
-            // Важно: сортируем от новых к старым (по убыванию ID)
             const postsToFlush = [...State.newPosts].sort((a, b) => b.message_id - a.message_id);
             
-            // Очищаем очередь ДО добавления
             State.newPosts = [];
             UI.updateNewPostsBadge();
             
             let addedCount = 0;
             postsToFlush.forEach(post => {
                 const inDOM = document.querySelector(`.post[data-message-id="${post.message_id}"]`);
-                if (inDOM) {
-                    console.log(`Post ${post.message_id} already in DOM, skipping`);
-                    return;
-                }
+                if (inDOM) return;
                 
                 UI.addPostToTop(post);
                 addedCount++;
             });
-            
-            if (addedCount > 0) {
-                Toast.success(`Loaded ${addedCount} new messages`);
-            }
-            
-            console.log('After flush - State.posts:', Array.from(State.posts.keys()));
-            console.log('After flush - DOM posts:', Array.from(document.querySelectorAll('.post')).map(el => el.dataset.messageId));
         },
         
         reconnect() {
-            if (this.giveUp || State.wsReconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS_TOTAL) {
-                Toast.error('Lost connection to server. Please refresh the page.');
+            if (this.giveUp || State.wsReconnectAttempts >= CONFIG.MAX_RECONNECT_ATTEMPTS) {
                 return;
             }
             
