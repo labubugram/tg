@@ -196,8 +196,39 @@
         
         formatText(text, entities = []) {
             if (!text) return '';
+
+            const escapeCode = (code) => {
+                return code
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;')
+                    .replace(/`/g, '&#96;');
+            };
             
-            let escaped = Security.escapeHtml(text);
+            const codeBlocks = [];
+            let processed = text;
+            
+            processed = processed.replace(/```([\s\S]*?)```/g, (match, code) => {
+                const placeholder = `%%%CODE_BLOCK_${codeBlocks.length}%%%`;
+                codeBlocks.push({
+                    type: 'pre',
+                    content: escapeCode(code)
+                });
+                return placeholder;
+            });
+            
+            processed = processed.replace(/`([^`]+)`/g, (match, code) => {
+                const placeholder = `%%%CODE_BLOCK_${codeBlocks.length}%%%`;
+                codeBlocks.push({
+                    type: 'inline',
+                    content: escapeCode(code)
+                });
+                return placeholder;
+            });
+            
+            let escaped = Security.escapeHtml(processed);
             
             escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
                 url = url.replace(/[<>"']/g, '');
@@ -247,10 +278,10 @@
                             wrapped = `<s>${content}</s>`;
                             break;
                         case 'code':
-                            wrapped = `<code class="tg-inline-code">${content}</code>`;
+                            wrapped = content;
                             break;
                         case 'pre':
-                            wrapped = `<pre class="tg-code-block"><code>${content}</code></pre>`;
+                            wrapped = content;
                             break;
                         case 'spoiler':
                         case 'Spoiler':
@@ -273,9 +304,6 @@
                     escaped = before + wrapped + after;
                 }
             } else {
-                escaped = escaped.replace(/```([\s\S]*?)```/g, '<pre class="tg-code-block"><code>$1</code></pre>');
-                escaped = escaped.replace(/`([^`]+)`/g, '<code class="tg-inline-code">$1</code>');
-                
                 const formatters = [
                     { pattern: /\*\*\*(.*?)\*\*\*/g, replacement: '<b><i>$1</i></b>' },
                     { pattern: /\*\*(.*?)\*\*/g, replacement: '<b>$1</b>' },
@@ -291,10 +319,17 @@
                 }
             }
 
-            const LINK_MARKER = '%%%LINK%%%';
-            let parts = [];
+            escaped = escaped.replace(/%%%CODE_BLOCK_(\d+)%%%/g, (match, index) => {
+                const block = codeBlocks[parseInt(index)];
+                if (block.type === 'pre') {
+                    return `<pre class="tg-code-block"><code>${block.content}</code></pre>`;
+                } else {
+                    return `<code class="tg-inline-code">${block.content}</code>`;
+                }
+            });
+
+            const parts = [];
             let lastIndex = 0;
-            
             const linkRegex = /<a[^>]*>.*?<\/a>/g;
             let match;
             while ((match = linkRegex.exec(escaped)) !== null) {
@@ -343,26 +378,26 @@
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
 
-            parts = [];
+            const tagParts = [];
             lastIndex = 0;
             const tagRegex = /<a[^>]*>.*?<\/a>|<[^>]+>/g;
             while ((match = tagRegex.exec(escaped)) !== null) {
-                parts.push({
+                tagParts.push({
                     type: 'text',
                     content: escaped.substring(lastIndex, match.index)
                 });
-                parts.push({
+                tagParts.push({
                     type: 'tag',
                     content: match[0]
                 });
                 lastIndex = match.index + match[0].length;
             }
-            parts.push({
+            tagParts.push({
                 type: 'text',
                 content: escaped.substring(lastIndex)
             });
             
-            escaped = parts.map(part => {
+            escaped = tagParts.map(part => {
                 if (part.type === 'text') {
                     return part.content
                         .replace(/(?<!\w)@(\w+)/g, '<span class="tg-mention" data-mention="@$1">@$1</span>')
