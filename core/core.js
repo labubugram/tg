@@ -1809,20 +1809,6 @@
             }
         },
         
-        async handleEditMessage(data) {
-            if (data.data) {
-                this.processFullMessage(data.data, true);
-                return;
-            }
-            
-            MessageAPI.invalidateMessage(data.message_id);
-            
-            const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
-            if (fullMessage) {
-                this.processFullMessage(fullMessage, true);
-            }
-        },
-        
         handleMediaReady(data) {
             MediaManager.handleMediaReady(data.message_id, data.media_url, data.media_type);
             MessageAPI.invalidateMessage(data.message_id);
