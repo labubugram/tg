@@ -543,7 +543,7 @@ body {
 }
 
 .tg-inline-code {
-    padding: 2px 6px;
+    padding: 5px 0px;
     font-family: var(--font-mono);
     font-size: 0.9em;
     color: var(--accent);
