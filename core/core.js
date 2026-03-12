@@ -1710,10 +1710,8 @@
                 if (data.posts && data.posts.length > 0) {
                     const newPosts = data.posts.reverse();
                     newPosts.forEach(post => {
-                        if (!State.posts.has(post.message_id)) {
-                            // ВАЖНО: используем processFullMessage, а не addPost
-                            this.processFullMessage(post, false, true);
-                        }
+                        // ВАЖНО: используем processFullMessage, а не addPostToTop
+                        this.processFullMessage(post, false, true); // isNew = true
                     });
                     
                     Toast.info(`Loaded ${newPosts.length} missed messages`);
