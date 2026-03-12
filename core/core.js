@@ -1799,22 +1799,68 @@
             }
             
             if (data.data) {
-                this.processFullMessage(data.data);
+                // Передаем флаг, что это новое сообщение (не редактирование)
+                this.processFullMessage(data.data, false, true); // true = isNew=true
                 return;
             }
             
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
-                this.processFullMessage(fullMessage);
+                this.processFullMessage(fullMessage, false, true); // true = isNew=true
             }
         },
+        
+        async handleEditMessage(data) {
+            if (data.data) {
+                this.processFullMessage(data.data, true, false); // true = isEdit, false = not new
+                return;
+            }
+            
+            MessageAPI.invalidateMessage(data.message_id);
+            
+            const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
+            if (fullMessage) {
+                this.processFullMessage(fullMessage, true, false); // true = isEdit, false = not new
+            }
+        },   
         
         handleMediaReady(data) {
             MediaManager.handleMediaReady(data.message_id, data.media_url, data.media_type);
             MessageAPI.invalidateMessage(data.message_id);
         },
         
-        processFullMessage(fullMessage, isEdit = false) {
+        async handleNewMessage(data) {
+            if (State.posts.has(data.message_id)) {
+                return;
+            }
+            
+            if (data.data) {
+                // Передаем флаг, что это новое сообщение (не редактирование)
+                this.processFullMessage(data.data, false, true); // true = isNew=true
+                return;
+            }
+            
+            const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
+            if (fullMessage) {
+                this.processFullMessage(fullMessage, false, true); // true = isNew=true
+            }
+        },
+
+        async handleEditMessage(data) {
+            if (data.data) {
+                this.processFullMessage(data.data, true, false); // true = isEdit, false = not new
+                return;
+            }
+            
+            MessageAPI.invalidateMessage(data.message_id);
+            
+            const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
+            if (fullMessage) {
+                this.processFullMessage(fullMessage, true, false); // true = isEdit, false = not new
+            }
+        },
+
+        processFullMessage(fullMessage, isEdit = false, isNew = false) {
             const messageId = fullMessage.message_id;
             
             const post = {
@@ -1834,6 +1880,7 @@
             const existingPost = State.posts.get(messageId);
             
             if (isEdit) {
+                // Редактирование существующего поста
                 if (existingPost) {
                     if (existingPost.edit_date === post.edit_date && 
                         existingPost.text === post.text &&
@@ -1844,13 +1891,33 @@
                     State.posts.set(messageId, {...post});
                     UI.updatePost(messageId, post);
                 } else {
+                    // Пост не существует - добавляем как новый
                     State.posts.set(messageId, {...post});
                     State.postOrder.unshift(messageId);
                     State.postOrder.sort((a, b) => b - a);
                     UI.addPostToTop(post);
                 }
-            } else {
-                this.addPost(post);
+            } else if (isNew) {
+                // НОВОЕ сообщение - должно учитывать скролл
+                if (window.scrollY < 400) {
+                    // Пользователь наверху - добавляем сразу
+                    if (!State.posts.has(messageId)) {
+                        UI.addPostToTop(post);
+                        State.posts.set(messageId, {...post});
+                        State.postOrder.unshift(messageId);
+                        State.postOrder.sort((a, b) => b - a);
+                    }
+                } else {
+                    // Пользователь не наверху - добавляем в очередь
+                    if (!State.posts.has(messageId)) {
+                        const existsInQueue = State.newPosts.some(p => p.message_id === messageId);
+                        if (!existsInQueue) {
+                            State.newPosts.push(post);
+                            State.newPosts.sort((a, b) => b.message_id - a.message_id);
+                            UI.updateNewPostsBadge();
+                        }
+                    }
+                }
             }
             
             if (post.has_media && !post.media_url) {
