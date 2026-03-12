@@ -62,7 +62,8 @@
         loadingMessages: new Set(),
         initialLoadComplete: false,
         pendingEvents: [],
-        lastEventId: 0
+        lastEventId: 0,
+        currentlyPlayingVideo: null
     };
 
     function cleanupResources() {
@@ -627,6 +628,54 @@
         }
     };
 
+    const VideoManager = {
+        stopAllVideos() {
+            if (State.currentlyPlayingVideo) {
+                State.currentlyPlayingVideo.pause();
+                State.currentlyPlayingVideo = null;
+            }
+            
+            document.querySelectorAll('video').forEach(video => {
+                if (!video.paused) {
+                    video.pause();
+                }
+            });
+        },
+        
+        pauseVideo(video) {
+            if (video && !video.paused) {
+                video.pause();
+                if (State.currentlyPlayingVideo === video) {
+                    State.currentlyPlayingVideo = null;
+                }
+            }
+        },
+        
+        playVideo(video) {
+            if (!video) return;
+            
+            if (State.currentlyPlayingVideo && State.currentlyPlayingVideo !== video) {
+                State.currentlyPlayingVideo.pause();
+            }
+            
+            video.play().catch(() => {});
+            State.currentlyPlayingVideo = video;
+        },
+        
+        handleVideoPlay(video) {
+            if (State.currentlyPlayingVideo && State.currentlyPlayingVideo !== video) {
+                State.currentlyPlayingVideo.pause();
+            }
+            State.currentlyPlayingVideo = video;
+        },
+        
+        handleVideoPause(video) {
+            if (State.currentlyPlayingVideo === video) {
+                State.currentlyPlayingVideo = null;
+            }
+        }
+    };
+
     const ThemeManager = {
         video: null,
         videoTimeoutId: null,
@@ -671,14 +720,14 @@
         showVideo() {
             if (this.video) {
                 this.video.classList.add('visible');
-                this.video.play().catch(() => {});
+                VideoManager.playVideo(this.video);
             }
         },
         
         hideVideo() {
             if (this.video) {
                 this.video.classList.remove('visible');
-                this.video.pause();
+                VideoManager.pauseVideo(this.video);
             }
             if (this.videoTimeoutId) {
                 clearTimeout(this.videoTimeoutId);
@@ -746,8 +795,8 @@
                 if (mediaContainer && !mediaContainer.classList.contains('media-unloaded')) {
                     const video = mediaContainer.querySelector('video');
                     if (video) {
+                        VideoManager.pauseVideo(video);
                         video.dataset.src = video.src;
-                        video.pause();
                         video.removeAttribute('src');
                         video.load();
                         mediaContainer.classList.add('media-unloaded');
@@ -796,7 +845,7 @@
                     
                     const newVideo = postEl.querySelector('video');
                     if (newVideo && UI.isElementInViewport(postEl)) {
-                        newVideo.play().catch(() => {});
+                        VideoManager.playVideo(newVideo);
                     }
                     return true;
                 }
@@ -968,8 +1017,19 @@
                         State.visiblePosts.add(msgId);
                         MediaManager.loadMedia(msgId);
                         MediaManager.restoreMediaIfNeeded(msgId);
+                        
+                        const video = post.querySelector('video');
+                        if (video && video.dataset.src && !video.src) {
+                            video.src = video.dataset.src;
+                            delete video.dataset.src;
+                            VideoManager.playVideo(video);
+                        }
                     } else {
                         State.visiblePosts.delete(msgId);
+                        const video = post.querySelector('video');
+                        if (video && !video.paused) {
+                            VideoManager.pauseVideo(video);
+                        }
                         MediaManager.unloadMedia(msgId);
                     }
                 });
@@ -1035,6 +1095,8 @@
                     if (this.observer) {
                         this.observer.unobserve(el);
                     }
+                    const video = el.querySelector('video');
+                    if (video) VideoManager.pauseVideo(video);
                     el.remove();
                 });
             }
@@ -1116,7 +1178,9 @@
                                 muted 
                                 playsinline
                                 preload="auto"
-                                style="max-width:100%; max-height:500px; background:#282c3000;">
+                                style="max-width:100%; max-height:500px; background:#282c3000;"
+                                onplay="window.__videoManager?.handleVideoPlay(this)"
+                                onpause="window.__videoManager?.handleVideoPause(this)">
                                 Your browser does not support video.
                             </video>
                         </div>
@@ -1129,7 +1193,9 @@
                                 controls 
                                 preload="metadata" 
                                 playsinline
-                                style="max-width:100%; max-height:500px; background:#282c3000;">
+                                style="max-width:100%; max-height:500px; background:#282c3000;"
+                                onplay="window.__videoManager?.handleVideoPlay(this)"
+                                onpause="window.__videoManager?.handleVideoPause(this)">
                                 Your browser does not support video.
                             </video>
                         </div>
@@ -1283,6 +1349,9 @@
             if (data.media_url) {
                 const mediaContainer = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-pending');
                 if (mediaContainer) {
+                    const video = mediaContainer.querySelector('video');
+                    if (video) VideoManager.pauseVideo(video);
+                    
                     const newMedia = this.renderMedia(data.media_url, data.media_type);
                     MediaManager.replaceMediaContainer(postEl, newMedia, messageId);
                     
@@ -1316,6 +1385,9 @@
             
             const mediaContainer = postEl.querySelector('.media-loading, .media-pending, .media-container');
             if (mediaContainer) {
+                const video = mediaContainer.querySelector('video');
+                if (video) VideoManager.pauseVideo(video);
+                
                 let message = '📷 Media unavailable';
                 switch(reason) {
                     case 'timeout':
@@ -1346,6 +1418,9 @@
             if (this.observer) {
                 this.observer.unobserve(postEl);
             }
+            
+            const video = postEl.querySelector('video');
+            if (video) VideoManager.pauseVideo(video);
             
             postEl.classList.add('deleted');
             
@@ -1486,21 +1561,32 @@
                 this.observer.disconnect();
                 this.observer = null;
             }
+            VideoManager.stopAllVideos();
             API.clearMediaCache();
         }
     };
 
     const Lightbox = {
+        activeVideo: null,
+        
         open(url, type) {
             if (!url) return;
+            
+            VideoManager.stopAllVideos();
+            
             const lightbox = document.getElementById('lightbox');
             const content = document.getElementById('lightboxContent');
             const fullUrl = url.startsWith('http') ? url : `${CONFIG.API_BASE}${url}`;
             const isVideo = type === 'video' || type === 'Video' || url.match(/\.(mp4|webm|mov)$/i);
             
-            content.innerHTML = isVideo
-                ? `<video src="${fullUrl}" controls autoplay playsinline></video>`
-                : `<img src="${fullUrl}" alt="Media">`;
+            if (isVideo) {
+                content.innerHTML = `<video src="${fullUrl}" controls autoplay playsinline 
+                    onplay="window.__videoManager?.handleVideoPlay(this)"
+                    onpause="window.__videoManager?.handleVideoPause(this)"></video>`;
+                this.activeVideo = content.querySelector('video');
+            } else {
+                content.innerHTML = `<img src="${fullUrl}" alt="Media">`;
+            }
             
             lightbox.classList.add('active');
             document.body.style.overflow = 'hidden';
@@ -1509,6 +1595,12 @@
         close() {
             const lightbox = document.getElementById('lightbox');
             lightbox.classList.remove('active');
+            
+            if (this.activeVideo) {
+                VideoManager.pauseVideo(this.activeVideo);
+                this.activeVideo = null;
+            }
+            
             document.getElementById('lightboxContent').innerHTML = '';
             document.body.style.overflow = '';
         }
@@ -1952,6 +2044,8 @@
     };
 
     function init() {
+        window.__videoManager = VideoManager;
+        
         ThemeManager.init();
         UI.updateChannelInfo();
         
