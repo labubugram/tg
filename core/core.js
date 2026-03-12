@@ -196,18 +196,8 @@
         
         formatText(text, entities = []) {
             if (!text) return '';
-
+            
             const escapeHtml = (unsafe) => {
-                return unsafe
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#039;')
-                    .replace(/`/g, '&#96;');
-            };
-
-            const escapeCode = (unsafe) => {
                 return unsafe
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
@@ -217,29 +207,64 @@
 
             };
 
-            const codeBlocks = [];
-            let processed = text;
+            const isEmoji = (char) => {
+                const codePoint = char.codePointAt(0);
+
+                return (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) || 
+                       (codePoint >= 0x2600 && codePoint <= 0x26FF) ||   
+                       (codePoint >= 0x2700 && codePoint <= 0x27BF) ||   
+                       (codePoint >= 0x1F1E6 && codePoint <= 0x1F1FF) || 
+                       codePoint === 0x200D || 
+                       (codePoint >= 0xE0020 && codePoint <= 0xE007F);   
+            };
             
-            // Многострочный код
-            processed = processed.replace(/```([\s\S]*?)```/g, (match, code) => {
+       
+            const emojiSequences = [];
+            let processed = '';
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                if (isEmoji(char)) {
+                    
+                    let sequence = '';
+                    while (i < text.length && isEmoji(text[i])) {
+                        sequence += text[i];
+                        i++;
+                    }
+                    i--; // Корректировка индекса
+                    const placeholder = `%%%EMOJI${emojiSequences.length}%%%`;
+                    emojiSequences.push(sequence);
+                    processed += placeholder;
+                } else {
+                    processed += char;
+                }
+            }
+
+            const codeBlocks = [];
+            let processedWithCode = processed;
+
+            processedWithCode = processedWithCode.replace(/```([\s\S]*?)```/g, (match, code) => {
                 const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
                 codeBlocks.push({
                     type: 'pre',
-                    content: escapeCode(code)
+                    content: code
                 });
                 return placeholder;
             });
 
-            processed = processed.replace(/`([^`]+)`/g, (match, code) => {
+            processedWithCode = processedWithCode.replace(/`([^`]+)`/g, (match, code) => {
                 const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
                 codeBlocks.push({
                     type: 'inline',
-                    content: escapeCode(code)
+                    content: code
                 });
                 return placeholder;
             });
 
-            let escaped = escapeHtml(processed);
+            let escaped = escapeHtml(processedWithCode);
+
+            escaped = escaped.replace(/%%%EMOJI(\d+)%%%/g, (match, index) => {
+                return emojiSequences[parseInt(index)] || match;
+            });
 
             escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
                 url = url.replace(/[<>"']/g, '');
@@ -282,7 +307,6 @@
                             break;
                         case 'code':
                         case 'pre':
-                            // Для code оставляем плейсхолдер
                             wrapped = content;
                             break;
                         case 'spoiler':
@@ -320,10 +344,11 @@
                 const block = codeBlocks[parseInt(index)];
                 if (!block) return match;
                 
+                const content = escapeHtml(block.content);
                 if (block.type === 'pre') {
-                    return `<pre class="tg-code-block"><code>${block.content}</code></pre>`;
+                    return `<pre class="tg-code-block"><code>${content}</code></pre>`;
                 } else {
-                    return `<code class="tg-inline-code">${block.content}</code>`;
+                    return `<code class="tg-inline-code">${content}</code>`;
                 }
             });
 
@@ -354,7 +379,7 @@
                 });
             }).join('');
 
-            // Цитаты
+
             escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
