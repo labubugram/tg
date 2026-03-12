@@ -23,11 +23,13 @@
         API_VERSION: 'v1',
         MAX_RECONNECT_ATTEMPTS_TOTAL: 30,
         RECONNECT_GIVE_UP_DELAY: 300000,
-        MEDIA_READY_TIMEOUT: 60000,
+        MEDIA_READY_TIMEOUT: 60000, 
         MAX_CACHE_SIZE: 200,
         MAX_MEDIA_CACHE_SIZE: 100,
         CLEANUP_INTERVAL: 60000,
-        MEDIA_RETRY_TIMEOUT: 10000 // NEW: таймаут для повторной попытки загрузки медиа
+        MEDIA_RETRY_TIMEOUT: 5000, 
+        MEDIA_MAX_RETRIES: 5,
+        MEDIA_RETRY_DELAY: 2000
     };
 
     const State = {
@@ -44,6 +46,8 @@
         mediaErrorCache: new Set(),
         mediaLoading: new Set(),
         mediaPending: new Map(),
+        mediaRetryCount: new Map(),
+        mediaRetryTimeouts: new Map(), 
         scrollTimeout: null,
         recentMessages: new Map(),
         lastDocumentHeight: 0,
@@ -80,6 +84,10 @@
             clearInterval(State.wsPingInterval);
             State.wsPingInterval = null;
         }
+        
+        // NEW: очищаем все таймауты повторных попыток
+        State.mediaRetryTimeouts.forEach(clearTimeout);
+        State.mediaRetryTimeouts.clear();
     }
 
     function safeSetTimeout(fn, delay) {
@@ -125,6 +133,7 @@
             for (const [messageId, data] of State.mediaPending.entries()) {
                 if (data.timestamp < fiveMinutesAgo) {
                     State.mediaPending.delete(messageId);
+                    State.mediaRetryCount.delete(messageId);
                 }
             }
         },
@@ -589,7 +598,10 @@
                 const response = await fetch(url);
                 
                 if (!response.ok) {
-                    if (response.status === 404) return null;
+                    if (response.status === 404) {
+                        console.log(`Media 404 for message ${messageId}, will retry later`);
+                        return { error: 'not_found', status: 404, retry: true };
+                    }
                     throw new Error(`HTTP ${response.status}`);
                 }
                 
@@ -605,6 +617,7 @@
                 }
             } catch (err) {
                 console.error(`Error fetching media for ${messageId}:`, err);
+                return { error: err.message, retry: true };
             }
             return null;
         },
@@ -613,6 +626,9 @@
             State.mediaCache.clear();
             State.mediaErrorCache.clear();
             State.mediaPending.clear();
+            State.mediaRetryCount.clear();
+            State.mediaRetryTimeouts.forEach(clearTimeout);
+            State.mediaRetryTimeouts.clear();
         }
     };
 
@@ -793,7 +809,38 @@
             return false;
         },
         
-        loadMedia(messageId) {
+        // NEW: чистая функция для повторной попытки загрузки медиа
+        retryMedia(messageId) {
+            // Очищаем старый таймаут если есть
+            if (State.mediaRetryTimeouts.has(messageId)) {
+                clearTimeout(State.mediaRetryTimeouts.get(messageId));
+                State.mediaRetryTimeouts.delete(messageId);
+            }
+            
+            const retryCount = State.mediaRetryCount.get(messageId) || 0;
+            
+            if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
+                console.log(`Media for message ${messageId} exceeded max retries (${CONFIG.MEDIA_MAX_RETRIES}), marking as unavailable`);
+                UI.updatePostMediaUnavailable(messageId, 'max_retries');
+                State.mediaRetryCount.delete(messageId);
+                return;
+            }
+            
+            // Экспоненциальная задержка с jitter
+            const delay = CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.5, retryCount) + (Math.random() * 1000);
+            
+            console.log(`Scheduling retry ${retryCount + 1}/${CONFIG.MEDIA_MAX_RETRIES} for message ${messageId} in ${Math.round(delay)}ms`);
+            
+            const timeoutId = safeSetTimeout(() => {
+                State.mediaRetryTimeouts.delete(messageId);
+                this.loadMedia(messageId, true); // true = это повторная попытка
+            }, delay);
+            
+            State.mediaRetryTimeouts.set(messageId, timeoutId);
+        },
+        
+        loadMedia(messageId, isRetry = false) {
+            // Проверяем не грузится ли уже
             if (State.mediaLoading.has(messageId)) {
                 return;
             }
@@ -801,76 +848,92 @@
             const post = State.posts.get(messageId);
             if (!post || !post.has_media) return;
             
-            // FIX: Если URL уже есть, медиа загружено
+            // Если медиа уже загружено или помечено как ошибочное - выходим
             if (post.media_url) return;
+            if (State.mediaErrorCache.has(messageId)) return;
             
-            // FIX: Проверяем, не висит ли это сообщение в состоянии pending слишком долго
-            if (State.mediaPending.has(messageId)) {
-                const pendingInfo = State.mediaPending.get(messageId);
-                // Если запись о pending есть, но она старая (>10 секунд), удаляем её и пробуем снова
-                if (pendingInfo && pendingInfo.timestamp && (Date.now() - pendingInfo.timestamp > CONFIG.MEDIA_RETRY_TIMEOUT)) {
-                    console.log(`Media pending for ${messageId} timed out, retrying.`);
-                    State.mediaPending.delete(messageId);
-                    
-                    // Также чистим DOM-элемент, если он все еще показывает "pending"
-                    const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
-                    if (postEl) {
-                        const pendingEl = postEl.querySelector('.media-pending');
-                        if (pendingEl) {
-                            pendingEl.outerHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+            // Обновляем UI если это повторная попытка и там все еще pending
+            if (isRetry) {
+                const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                if (postEl) {
+                    const pendingEl = postEl.querySelector('.media-pending, .media-loading');
+                    if (!pendingEl) {
+                        // Если UI уже показал unavailable, но мы все еще пробуем - возвращаем loading
+                        const unavailableEl = postEl.querySelector('.media-unavailable');
+                        if (unavailableEl) {
+                            unavailableEl.outerHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
                         }
                     }
-                } else {
-                    // Если pending свежий, просто выходим
-                    return;
                 }
             }
             
             State.mediaLoading.add(messageId);
             
-            if (State.mediaPending.has(messageId)) {
-                State.mediaLoading.delete(messageId);
-                return;
-            }
-            
             API.fetchMediaOnce(messageId).then(mediaInfo => {
                 State.mediaLoading.delete(messageId);
                 
+                // Успех - есть URL
                 if (mediaInfo && mediaInfo.url) {
+                    console.log(`Media loaded for message ${messageId} after ${State.mediaRetryCount.get(messageId) || 0} retries`);
                     post.media_url = mediaInfo.url;
                     post.media_type = mediaInfo.file_type || post.media_type;
                     UI.updatePost(messageId, {
                         media_url: mediaInfo.url,
                         media_type: post.media_type
                     });
-                } else {
-                    // FIX: Сохраняем timestamp при установке pending
-                    State.mediaPending.set(messageId, {
-                        message_id: messageId,
-                        timestamp: Date.now()
-                    });
-                    
-                    UI.showMediaPending(messageId);
-                    
-                    safeSetTimeout(() => {
-                        if (State.mediaPending.has(messageId)) {
-                            State.mediaPending.delete(messageId);
-                            UI.updatePostMediaUnavailable(messageId, 'timeout');
-                        }
-                    }, CONFIG.MEDIA_READY_TIMEOUT);
+                    State.mediaRetryCount.delete(messageId);
+                    return;
                 }
+                
+                // Специальная обработка 404 - всегда повторяем, так как файл физически есть
+                if (mediaInfo && mediaInfo.error === 'not_found') {
+                    const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                    State.mediaRetryCount.set(messageId, currentRetries + 1);
+                    
+                    // Показываем пользователю, что медиа грузится (не показываем ошибку!)
+                    const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                    if (postEl) {
+                        const container = postEl.querySelector('.media-loading, .media-pending');
+                        if (!container) {
+                            // Если контейнера нет - создаем loading
+                            const postContent = postEl.querySelector('.post-content');
+                            if (postContent && !postContent.querySelector('.media-loading, .media-pending')) {
+                                postContent.insertAdjacentHTML('beforeend', '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>');
+                            }
+                        }
+                    }
+                    
+                    this.retryMedia(messageId);
+                    return;
+                }
+                
+                // Другие ошибки - тоже повторяем, но с меньшим энтузиазмом
+                const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                State.mediaRetryCount.set(messageId, currentRetries + 1);
+                
+                if (currentRetries < CONFIG.MEDIA_MAX_RETRIES - 1) {
+                    this.retryMedia(messageId);
+                } else {
+                    UI.updatePostMediaUnavailable(messageId, 'error');
+                }
+                
             }).catch(err => {
                 State.mediaLoading.delete(messageId);
-                // FIX: Сохраняем timestamp при ошибке
-                State.mediaPending.set(messageId, {
-                    message_id: messageId,
-                    timestamp: Date.now(),
-                    error: true
-                });
+                
+                const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                State.mediaRetryCount.set(messageId, currentRetries + 1);
+                
+                if (currentRetries < CONFIG.MEDIA_MAX_RETRIES - 1) {
+                    this.retryMedia(messageId);
+                } else {
+                    UI.updatePostMediaUnavailable(messageId, 'error');
+                }
             });
         },
         
         handleMediaReady(messageId, mediaUrl, mediaType) {
+            console.log(`Media ready for message ${messageId}, updating UI`);
+            
             const post = State.posts.get(messageId);
             if (post) {
                 post.media_url = mediaUrl;
@@ -881,8 +944,15 @@
                 });
             }
             
+            // Очищаем все состояния
             State.mediaPending.delete(messageId);
             State.mediaLoading.delete(messageId);
+            State.mediaRetryCount.delete(messageId);
+            
+            if (State.mediaRetryTimeouts.has(messageId)) {
+                clearTimeout(State.mediaRetryTimeouts.get(messageId));
+                State.mediaRetryTimeouts.delete(messageId);
+            }
             
             State.mediaCache.set(messageId, { url: mediaUrl, file_type: mediaType });
             
@@ -1121,12 +1191,13 @@
             if (post.media_url) {
                 mediaHTML = this.renderMedia(post.media_url, post.media_type, true);
             } else if (post.has_media) {
-                if (State.mediaPending.has(post.message_id)) {
-                    mediaHTML = '<div class="media-pending">⏳ Media processing...</div>';
+                // NEW: всегда показываем загрузку, даже если были ошибки в прошлом
+                // (кроме случая, когда превышено максимальное количество попыток)
+                const retryCount = State.mediaRetryCount.get(post.message_id) || 0;
+                if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
+                    mediaHTML = '<div class="media-unavailable">📷 Media unavailable</div>';
                 } else {
-                    mediaHTML = post.media_unavailable
-                        ? '<div class="media-unavailable">Media unavailable</div>'
-                        : '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                    mediaHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
                 }
             }
             
@@ -1271,12 +1342,25 @@
             const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (!postEl) return false;
             
-            const mediaContainer = postEl.querySelector('.media-loading, .media-pending');
+            const mediaContainer = postEl.querySelector('.media-loading, .media-pending, .media-container');
             if (mediaContainer) {
-                const message = reason === 'timeout' 
-                    ? '⏱️ Media took too long to load'
-                    : '📷 Media unavailable';
+                let message = '📷 Media unavailable';
+                switch(reason) {
+                    case 'timeout':
+                        message = '⏱️ Media took too long to load';
+                        break;
+                    case 'not_found':
+                        message = '📷 Media not found';
+                        break;
+                    case 'max_retries':
+                        message = '📷 Media failed to load after multiple attempts';
+                        break;
+                    case 'error':
+                        message = '📷 Error loading media';
+                        break;
+                }
                 mediaContainer.outerHTML = `<div class="media-unavailable">${message}</div>`;
+                State.mediaErrorCache.add(Number(postEl.dataset.messageId));
                 return true;
             }
             
@@ -1300,6 +1384,7 @@
                 if (index !== -1) State.postOrder.splice(index, 1);
                 State.mediaPending.delete(messageId);
                 State.mediaLoading.delete(messageId);
+                State.mediaRetryCount.delete(messageId);
                 State.fullMessageCache.delete(messageId);
             }, 300);
             
@@ -1429,6 +1514,9 @@
                 State.postOrder = [];
                 State.mediaPending.clear();
                 State.mediaLoading.clear();
+                State.mediaRetryCount.clear();
+                State.mediaRetryTimeouts.forEach(clearTimeout);
+                State.mediaRetryTimeouts.clear();
                 document.getElementById('feed').innerHTML = '';
                 State.offset = 0;
                 State.hasMore = true;
@@ -1466,7 +1554,7 @@
                     }
                     
                     data.messages.forEach(post => {
-                        if (post.has_media) {
+                        if (post.has_media && !State.mediaErrorCache.has(post.message_id)) {
                             MediaManager.loadMedia(post.message_id);
                         }
                     });
@@ -1774,7 +1862,7 @@
                 this.addPost(post);
             }
             
-            if (post.has_media && !post.media_url && !State.mediaLoading.has(messageId)) {
+            if (post.has_media && !post.media_url) {
                 safeSetTimeout(() => {
                     MediaManager.loadMedia(messageId);
                 }, 500);
@@ -1786,7 +1874,6 @@
                 return;
             }
             
-            // FIX: Увеличиваем порог для немедленного показа
             if (window.scrollY < 400) {
                 UI.addPostToTop(post);
                 State.posts.set(post.message_id, {...post});
@@ -1796,7 +1883,6 @@
                 const existsInQueue = State.newPosts.some(p => p.message_id === post.message_id);
                 if (!existsInQueue) {
                     State.newPosts.push(post);
-                    // FIX: Сортируем очередь для сохранения порядка
                     State.newPosts.sort((a, b) => b.message_id - a.message_id);
                     UI.updateNewPostsBadge();
                 }
@@ -1811,20 +1897,18 @@
             UI.deletePost(data.message_id);
             State.mediaPending.delete(data.message_id);
             State.mediaLoading.delete(data.message_id);
+            State.mediaRetryCount.delete(data.message_id);
             State.fullMessageCache.delete(data.message_id);
         },
         
         flushNewPosts() {
             if (State.newPosts.length === 0) return;
             
-            // FIX: Копируем очередь и очищаем оригинал
             const postsToFlush = State.newPosts.slice();
             State.newPosts = [];
             
-            // FIX: Сортируем копию для гарантии правильного порядка
             postsToFlush.sort((a, b) => b.message_id - a.message_id);
             
-            // FIX: Вставляем все сообщения
             postsToFlush.forEach(post => {
                 UI.addPostToTop(post);
                 State.posts.set(post.message_id, {...post});
