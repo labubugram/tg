@@ -197,8 +197,8 @@
         formatText(text, entities = []) {
             if (!text) return '';
 
-            const escapeCode = (code) => {
-                return code
+            const escapeHtml = (unsafe) => {
+                return unsafe
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;')
@@ -206,45 +206,48 @@
                     .replace(/'/g, '&#039;')
                     .replace(/`/g, '&#96;');
             };
-            
+
+            const escapeCode = (unsafe) => {
+                return unsafe
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+
+            };
+
             const codeBlocks = [];
             let processed = text;
             
+            // Многострочный код
             processed = processed.replace(/```([\s\S]*?)```/g, (match, code) => {
-                const placeholder = `%%%CODE_BLOCK_${codeBlocks.length}%%%`;
+                const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
                 codeBlocks.push({
                     type: 'pre',
                     content: escapeCode(code)
                 });
                 return placeholder;
             });
-            
+
             processed = processed.replace(/`([^`]+)`/g, (match, code) => {
-                const placeholder = `%%%CODE_BLOCK_${codeBlocks.length}%%%`;
+                const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
                 codeBlocks.push({
                     type: 'inline',
                     content: escapeCode(code)
                 });
                 return placeholder;
             });
-            
-            let escaped = Security.escapeHtml(processed);
-            
+
+            let escaped = escapeHtml(processed);
+
             escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
                 url = url.replace(/[<>"']/g, '');
                 const safeUrl = Security.sanitizeUrl(url);
                 if (safeUrl === '#') return match;
                 
-                let domain = '';
-                try {
-                    const urlObj = new URL(url);
-                    domain = urlObj.hostname.replace('www.', '');
-                } catch {
-                    domain = url;
-                }
-                
-                const escapedLinkText = Security.escapeHtml(linkText);
-                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link" title="${url}" data-domain="${domain}">${escapedLinkText}</a>`;
+                const escapedLinkText = escapeHtml(linkText);
+                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapedLinkText}</a>`;
             });
 
             if (entities && entities.length > 0) {
@@ -278,9 +281,8 @@
                             wrapped = `<s>${content}</s>`;
                             break;
                         case 'code':
-                            wrapped = content;
-                            break;
                         case 'pre':
+                            // Для code оставляем плейсхолдер
                             wrapped = content;
                             break;
                         case 'spoiler':
@@ -304,23 +306,20 @@
                     escaped = before + wrapped + after;
                 }
             } else {
-                const formatters = [
-                    { pattern: /\*\*\*(.*?)\*\*\*/g, replacement: '<b><i>$1</i></b>' },
-                    { pattern: /\*\*(.*?)\*\*/g, replacement: '<b>$1</b>' },
-                    { pattern: /__(.*?)__/g, replacement: '<u>$1</u>' },
-                    { pattern: /\*(.*?)\*/g, replacement: '<i>$1</i>' },
-                    { pattern: /_(.*?)_/g, replacement: '<i>$1</i>' },
-                    { pattern: /~~(.*?)~~/g, replacement: '<s>$1</s>' },
-                    { pattern: /\|\|(.*?)\|\|/g, replacement: '<span class="tg-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>' }
-                ];
-                
-                for (const formatter of formatters) {
-                    escaped = escaped.replace(formatter.pattern, formatter.replacement);
-                }
+
+                escaped = escaped.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
+                escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                escaped = escaped.replace(/__(.*?)__/g, '<u>$1</u>');
+                escaped = escaped.replace(/\*(.*?)\*/g, '<i>$1</i>');
+                escaped = escaped.replace(/_(.*?)_/g, '<i>$1</i>');
+                escaped = escaped.replace(/~~(.*?)~~/g, '<s>$1</s>');
+                escaped = escaped.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
             }
 
-            escaped = escaped.replace(/%%%CODE_BLOCK_(\d+)%%%/g, (match, index) => {
+            escaped = escaped.replace(/%%%CODEBLOCK(\d+)%%%/g, (match, index) => {
                 const block = codeBlocks[parseInt(index)];
+                if (!block) return match;
+                
                 if (block.type === 'pre') {
                     return `<pre class="tg-code-block"><code>${block.content}</code></pre>`;
                 } else {
@@ -333,54 +332,36 @@
             const linkRegex = /<a[^>]*>.*?<\/a>/g;
             let match;
             while ((match = linkRegex.exec(escaped)) !== null) {
-                parts.push({
-                    type: 'text',
-                    content: escaped.substring(lastIndex, match.index)
-                });
-                parts.push({
-                    type: 'link',
-                    content: match[0]
-                });
+                parts.push(escaped.substring(lastIndex, match.index));
+                parts.push(match[0]);
                 lastIndex = match.index + match[0].length;
             }
-            parts.push({
-                type: 'text',
-                content: escaped.substring(lastIndex)
-            });
+            parts.push(escaped.substring(lastIndex));
             
-            const urlRegex = /(https?:\/\/[^\s<"')]+)(?![^<]*>)/g;
             escaped = parts.map(part => {
-                if (part.type === 'text') {
-                    return part.content.replace(urlRegex, (url) => {
-                        const safeUrl = Security.sanitizeUrl(url);
-                        if (safeUrl === '#') return url;
-                        
-                        let displayDomain = '';
-                        try {
-                            const urlObj = new URL(url);
-                            displayDomain = urlObj.hostname.replace('www.', '');
-                        } catch {
-                            displayDomain = url;
-                        }
-                        
-                        let displayText = url;
-                        if (url.length > 50) {
-                            displayText = url.substring(0, 40) + '…' + url.substring(url.length - 10);
-                        }
-                        
-                        return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link" data-domain="${displayDomain}" title="${url}">${displayText}</a>`;
-                    });
-                }
-                return part.content;
+                if (part.startsWith('<a')) return part;
+                
+                return part.replace(/(https?:\/\/[^\s<"')]+)(?![^<]*>)/g, (url) => {
+                    const safeUrl = Security.sanitizeUrl(url);
+                    if (safeUrl === '#') return url;
+                    
+                    let displayText = url;
+                    if (url.length > 50) {
+                        displayText = url.substring(0, 40) + '…' + url.substring(url.length - 10);
+                    }
+                    
+                    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${displayText}</a>`;
+                });
             }).join('');
 
+            // Цитаты
             escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
 
             const tagParts = [];
             lastIndex = 0;
-            const tagRegex = /<a[^>]*>.*?<\/a>|<[^>]+>/g;
+            const tagRegex = /<[^>]+>/g;
             while ((match = tagRegex.exec(escaped)) !== null) {
                 tagParts.push({
                     type: 'text',
@@ -398,12 +379,11 @@
             });
             
             escaped = tagParts.map(part => {
-                if (part.type === 'text') {
-                    return part.content
-                        .replace(/(?<!\w)@(\w+)/g, '<span class="tg-mention" data-mention="@$1">@$1</span>')
-                        .replace(/(?<!\w)#(\w+)/g, '<span class="tg-hashtag" data-hashtag="#$1">#$1</span>');
-                }
-                return part.content;
+                if (part.type === 'tag') return part.content;
+                
+                return part.content
+                    .replace(/(?<!\w)@(\w+)/g, '<span class="tg-mention" data-mention="@$1">@$1</span>')
+                    .replace(/(?<!\w)#(\w+)/g, '<span class="tg-hashtag" data-hashtag="#$1">#$1</span>');
             }).join('');
 
             escaped = escaped.replace(/\n/g, '<br>');
