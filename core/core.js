@@ -1419,7 +1419,7 @@
                     if (currentPost.text !== post.text || 
                         currentPost.media_url !== post.media_url ||
                         currentPost.views !== post.views) {
-                        UI.updatePost(messageId, post);
+                        this.updatePost(messageId, post);
                     }
                 }
                 return;
@@ -1444,16 +1444,30 @@
             const feed = document.getElementById('feed');
             const postEl = this.createPostElement(post);
             
-            if (feed.firstChild) {
-                feed.insertBefore(postEl, feed.firstChild);
-            } else {
-                feed.appendChild(postEl);
+            // Вставляем в правильном порядке (по убыванию ID)
+            let inserted = false;
+            for (const child of feed.children) {
+                const childId = parseInt(child.dataset.messageId);
+                if (childId < messageId) {
+                    feed.insertBefore(postEl, child);
+                    inserted = true;
+                    break;
+                }
+            }
+            
+            if (!inserted) {
+                if (feed.firstChild) {
+                    feed.insertBefore(postEl, feed.firstChild);
+                } else {
+                    feed.appendChild(postEl);
+                }
             }
             
             // 5. Добавляем в State
             State.posts.set(messageId, {...post});
             if (!State.postOrder.includes(messageId)) {
                 State.postOrder.unshift(messageId);
+                State.postOrder.sort((a, b) => b - a);
             }
             
             // 6. Анимация
@@ -1629,9 +1643,10 @@
         
         State.initialLoadComplete = true;
         
+        // Обрабатываем накопленные события с правильными типами
         while (State.pendingEvents.length > 0) {
             const event = State.pendingEvents.shift();
-            WebSocketManager.processFullMessage(event.data, event.isEdit);
+            WebSocketManager.processFullMessage(event.data, event.type);
         }
         
         UI.initIntersectionObserver();
@@ -1728,7 +1743,7 @@
                 if (data.posts && data.posts.length > 0) {
                     const newPosts = data.posts.reverse();
                     newPosts.forEach(post => {
-                        this.processFullMessage(post, false, true);
+                        this.processFullMessage(post, 'new');
                     });
                     
                     Toast.info(`Loaded ${newPosts.length} missed messages`);
@@ -1750,10 +1765,12 @@
                 return;
             }
             
+            // Пропускаем системные сообщения
             if (['ping', 'pong', 'welcome', 'heartbeat', 'buffering', 'flush_start', 'flush_complete', 'subscribed', 'error'].includes(data.type)) {
                 return;
             }
             
+            // Проверяем версию для не-системных сообщений
             if (data.version !== '2.0') {
                 return;
             }
@@ -1763,14 +1780,14 @@
             if (!State.initialLoadComplete) {
                 State.pendingEvents.push({
                     data: data.data,
-                    isEdit: data.type === 'edit'
+                    type: data.type
                 });
                 return;
             }
             
+            // Дедупликация
             const messageKey = `${data.channel_id}-${data.message_id}-${data.type}`;
             const lastReceived = State.recentMessages.get(messageKey);
-            
             const ttl = data.type === 'edit' ? 2000 : CONFIG.DEDUP_TTL;
             
             if (lastReceived && (Date.now() - lastReceived < ttl)) {
@@ -1779,6 +1796,7 @@
             
             State.recentMessages.set(messageKey, Date.now());
             
+            // Очистка старых ключей
             if (State.recentMessages.size > 100) {
                 const now = Date.now();
                 for (const [key, time] of State.recentMessages.entries()) {
@@ -1786,6 +1804,7 @@
                 }
             }
             
+            // Обработка по типу
             switch (data.type) {
                 case 'new':
                     this.handleNewMessage(data);
@@ -1799,28 +1818,26 @@
                 case 'media_ready':
                     this.handleMediaReady(data);
                     break;
+                default:
+                    console.log('Unknown message type:', data.type);
             }
         },
         
         async handleNewMessage(data) {
-            if (State.posts.has(data.message_id)) {
-                return;
-            }
-            
             if (data.data) {
-                this.processFullMessage(data.data, false, true);
+                this.processFullMessage(data.data, 'new');
                 return;
             }
             
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
-                this.processFullMessage(fullMessage, false, true);
+                this.processFullMessage(fullMessage, 'new');
             }
         },
         
         async handleEditMessage(data) {
             if (data.data) {
-                this.processFullMessage(data.data, true, false);
+                this.processFullMessage(data.data, 'edit');
                 return;
             }
             
@@ -1828,17 +1845,22 @@
             
             const fullMessage = await MessageAPI.fetchFullMessage(data.message_id);
             if (fullMessage) {
-                this.processFullMessage(fullMessage, true, false);
+                this.processFullMessage(fullMessage, 'edit');
             }
-        },   
+        },
         
         handleMediaReady(data) {
             MediaManager.handleMediaReady(data.message_id, data.media_url, data.media_type);
             MessageAPI.invalidateMessage(data.message_id);
         },
         
-        processFullMessage(fullMessage, isEdit = false, isNew = false) {
+        processFullMessage(fullMessage, type = 'new') {
             const messageId = fullMessage.message_id;
+            
+            // Нормализуем тип
+            const actualType = type === 'edit' ? 'edit' : 'new';
+            
+            console.log(`📨 Processing ${actualType} message:`, messageId);
             
             const post = {
                 message_id: messageId,
@@ -1855,31 +1877,30 @@
             };
             
             const existingPost = State.posts.get(messageId);
+            const existingInQueue = State.newPosts.some(p => p.message_id === messageId);
+            const existingInDOM = document.querySelector(`.post[data-message-id="${messageId}"]`);
             
-            if (isEdit) {
-                if (existingPost) {
-                    if (existingPost.edit_date === post.edit_date && 
-                        existingPost.text === post.text &&
-                        existingPost.media_url === post.media_url) {
-                        return;
-                    }
-                    
-                    State.posts.set(messageId, {...post});
+            if (actualType === 'edit') {
+                // Редактирование - обновляем где бы ни было
+                if (existingInDOM) {
                     UI.updatePost(messageId, post);
-                } else {
+                    if (existingPost) {
+                        State.posts.set(messageId, {...post});
+                    }
+                } else if (existingInQueue) {
+                    // Обновляем в очереди
+                    const index = State.newPosts.findIndex(p => p.message_id === messageId);
+                    if (index !== -1) {
+                        State.newPosts[index] = {...post};
+                    }
+                } else if (existingPost) {
+                    // Только в State, но не в DOM - обновляем State
                     State.posts.set(messageId, {...post});
-                    State.postOrder.unshift(messageId);
-                    State.postOrder.sort((a, b) => b - a);
-                    UI.addPostToTop(post);
                 }
-            } else if (isNew) {
-                const isInQueue = State.newPosts.some(p => p.message_id === messageId);
-                
-                if (isInQueue) {
-                    return;
-                }
-                
-                if (State.posts.has(messageId)) {
+            } else {
+                // Новое сообщение
+                if (existingInDOM || existingPost || existingInQueue) {
+                    console.log(`Post ${messageId} already exists, skipping`);
                     return;
                 }
                 
@@ -1887,7 +1908,6 @@
                     UI.addPostToTop(post);
                 } else {
                     State.newPosts.push(post);
-                    State.newPosts.sort((a, b) => b.message_id - a.message_id);
                     UI.updateNewPostsBadge();
                 }
             }
@@ -1917,10 +1937,12 @@
             console.log('Flushing new posts:', State.newPosts.map(p => p.message_id));
             console.log('Before flush - State.posts:', Array.from(State.posts.keys()));
             
-            const postsToFlush = State.newPosts.slice();
-            State.newPosts = [];
+            // Важно: сортируем от новых к старым (по убыванию ID)
+            const postsToFlush = [...State.newPosts].sort((a, b) => b.message_id - a.message_id);
             
-            postsToFlush.sort((a, b) => b.message_id - a.message_id);
+            // Очищаем очередь ДО добавления
+            State.newPosts = [];
+            UI.updateNewPostsBadge();
             
             let addedCount = 0;
             postsToFlush.forEach(post => {
@@ -1933,8 +1955,6 @@
                 UI.addPostToTop(post);
                 addedCount++;
             });
-            
-            UI.updateNewPostsBadge();
             
             if (addedCount > 0) {
                 Toast.success(`Loaded ${addedCount} new messages`);
