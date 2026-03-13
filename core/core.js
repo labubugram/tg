@@ -63,7 +63,11 @@
         initialLoadComplete: false,
         pendingEvents: [],
         lastEventId: 0,
-        currentlyPlayingVideo: null
+        currentlyPlayingVideo: null,
+        // Новые поля для оптимизации batch-обработки
+        batchProcessed: new Set(),
+        pendingEdits: new Set(),
+        pendingNews: new Set()
     };
 
     function cleanupResources() {
@@ -230,7 +234,7 @@
                         sequence += text[i];
                         i++;
                     }
-                    i--; // Корректировка индекса
+                    i--;
                     const placeholder = `%%%EMOJI${emojiSequences.length}%%%`;
                     emojiSequences.push(sequence);
                     processed += placeholder;
@@ -1307,7 +1311,7 @@
             return postEl;
         },
         
-        updatePost(messageId, data) {
+        updatePost(messageId, data, options = {}) {
             const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (!postEl) {
                 if (data.media_url) {
@@ -1323,6 +1327,7 @@
             const currentPost = State.posts.get(Number(messageId));
             
             if (currentPost) {
+                // Проверяем, есть ли реальные изменения
                 const hasChanges = 
                     (data.edit_date && currentPost.edit_date !== data.edit_date) ||
                     (data.text !== undefined && currentPost.text !== data.text) ||
@@ -1331,7 +1336,7 @@
                     (data.media_url && currentPost.media_url !== data.media_url);
                 
                 if (!hasChanges) {
-                    return false;
+                    return false; // Нет изменений - ничего не делаем
                 }
                 
                 State.posts.set(Number(messageId), {...currentPost, ...data});
@@ -1412,11 +1417,18 @@
             }
             
             if (changed) {
-                postEl.classList.add('updated');
-                safeSetTimeout(() => postEl.classList.remove('updated'), 2000);
+                // Если это batch-обновление, не показываем анимацию
+                if (!options.batch) {
+                    postEl.classList.add('updated');
+                    safeSetTimeout(() => postEl.classList.remove('updated'), 2000);
+                }
             }
             
             return changed;
+        },
+        
+        updatePostQuiet(messageId, data) {
+            return this.updatePost(messageId, data, { batch: true });
         },
         
         updatePostMediaUnavailable(messageId, reason = 'failed') {
@@ -1733,6 +1745,9 @@
         UI.initIntersectionObserver();
     }
 
+    // ============================================
+    // ИСПРАВЛЕННЫЙ WebSocketManager
+    // ============================================
     const WebSocketManager = {
         giveUp: false,
         giveUpTimer: null,
@@ -1829,28 +1844,29 @@
             }
         },
         
+        // ✅ НОВЫЙ: Основной обработчик сообщений
         handleMessage(data) {
             if (data.event_id && data.event_id > State.lastEventId) {
                 State.lastEventId = data.event_id;
             }
             
+            // Обработка batch-сообщений
             if (data.type === 'event_batch') {
-                data.events.forEach(event => {
-                    this.handleMessage(event);
-                });
+                this.handleEventBatch(data);
                 return;
             }
             
-            if (['ping', 'pong', 'welcome', 'heartbeat', 'buffering', 'flush_start', 'flush_complete', 'subscribed', 'error'].includes(data.type)) {
+            // Пропускаем служебные сообщения
+            if (['ping', 'pong', 'welcome', 'heartbeat', 'buffering', 
+                 'flush_start', 'flush_complete', 'subscribed', 'error'].includes(data.type)) {
                 return;
             }
             
-            if (data.version !== '2.0') {
-                return;
-            }
-            
+            // Проверка версии и канала
+            if (data.version !== '2.0') return;
             if (data.channel_id !== parseInt(CONFIG.CHANNEL_ID)) return;
             
+            // Если начальная загрузка не завершена, сохраняем в очередь
             if (!State.initialLoadComplete) {
                 State.pendingEvents.push({
                     data: data.data,
@@ -1859,6 +1875,7 @@
                 return;
             }
             
+            // Дедупликация для одиночных событий
             const messageKey = `${data.channel_id}-${data.message_id}-${data.type}`;
             const lastReceived = State.recentMessages.get(messageKey);
             const ttl = data.type === 'edit' ? 2000 : CONFIG.DEDUP_TTL;
@@ -1869,13 +1886,12 @@
             
             State.recentMessages.set(messageKey, Date.now());
             
-            if (State.recentMessages.size > 100) {
-                const now = Date.now();
-                for (const [key, time] of State.recentMessages.entries()) {
-                    if (now - time > CONFIG.DEDUP_TTL) State.recentMessages.delete(key);
-                }
-            }
-            
+            // Обработка по типу
+            this.handleSingleEvent(data);
+        },
+        
+        // ✅ НОВЫЙ: Обработка одиночных событий
+        handleSingleEvent(data) {
             switch (data.type) {
                 case 'new':
                     this.handleNewMessage(data);
@@ -1890,6 +1906,148 @@
                     this.handleMediaReady(data);
                     break;
             }
+        },
+        
+        // ✅ НОВЫЙ: Обработка batch-событий (оптимизированная)
+        handleEventBatch(batch) {
+            console.log(`Processing batch of ${batch.events.length} events, is_replay: ${batch.is_replay}`);
+            
+            // Группируем события по типу
+            const edits = [];
+            const news = [];
+            const deletes = [];
+            const mediaReadies = [];
+            
+            batch.events.forEach(event => {
+                if (event.channel_id !== parseInt(CONFIG.CHANNEL_ID)) return;
+                
+                // Дедупликация внутри batch
+                const messageKey = `${event.channel_id}-${event.message_id}-${event.type}`;
+                if (State.batchProcessed.has(messageKey)) return;
+                State.batchProcessed.add(messageKey);
+                
+                switch (event.type) {
+                    case 'edit':
+                        edits.push(event);
+                        break;
+                    case 'new':
+                        news.push(event);
+                        break;
+                    case 'delete':
+                        deletes.push(event);
+                        break;
+                    case 'media_ready':
+                        mediaReadies.push(event);
+                        break;
+                }
+            });
+            
+            // Очищаем Set после обработки batch
+            safeSetTimeout(() => {
+                State.batchProcessed.clear();
+            }, 100);
+            
+            // Обрабатываем edit-события одним запросом
+            if (edits.length > 0) {
+                this.handleBatchEdits(edits, batch.is_replay);
+            }
+            
+            // Обрабатываем новые сообщения
+            if (news.length > 0) {
+                this.handleBatchNews(news);
+            }
+            
+            // Обрабатываем удаления
+            deletes.forEach(event => this.handleDeleteMessage(event));
+            
+            // Обрабатываем media_ready
+            mediaReadies.forEach(event => this.handleMediaReady(event));
+        },
+        
+        // ✅ НОВЫЙ: Пакетная обработка edit-событий
+        async handleBatchEdits(editEvents, isReplay = false) {
+            console.log(`Processing ${editEvents.length} edit events in batch`);
+            
+            // Собираем все ID сообщений для обновления
+            const messageIds = editEvents.map(e => e.message_id);
+            
+            // Инвалидируем кэш для всех
+            messageIds.forEach(id => MessageAPI.invalidateMessage(id));
+            
+            // Загружаем все обновленные сообщения одним запросом
+            const messages = await MessageAPI.fetchBatchMessages(messageIds);
+            
+            // Обновляем UI для каждого сообщения, если есть изменения
+            let updatedCount = 0;
+            Object.entries(messages).forEach(([id, fullMessage]) => {
+                const messageId = parseInt(id);
+                const post = State.posts.get(messageId);
+                
+                if (!post) return;
+                
+                // Проверяем, есть ли реальные изменения
+                const hasChanges = 
+                    (fullMessage.text !== undefined && post.text !== fullMessage.text) ||
+                    (fullMessage.views !== undefined && post.views !== fullMessage.views) ||
+                    (fullMessage.media?.url && post.media_url !== fullMessage.media.url) ||
+                    (fullMessage.edit_date && post.edit_date !== fullMessage.edit_date);
+                
+                if (hasChanges) {
+                    // Используем тихое обновление для batch
+                    UI.updatePostQuiet(messageId, this.normalizePostData(fullMessage));
+                    updatedCount++;
+                }
+            });
+            
+            if (updatedCount > 0) {
+                console.log(`Updated ${updatedCount} posts in batch`);
+            }
+        },
+        
+        // ✅ НОВЫЙ: Пакетная обработка новых сообщений
+        handleBatchNews(newEvents) {
+            const messageIds = newEvents.map(e => e.message_id);
+            MessageAPI.fetchBatchMessages(messageIds).then(messages => {
+                const posts = Object.values(messages);
+                posts.sort((a, b) => b.message_id - a.message_id);
+                
+                let addedCount = 0;
+                posts.forEach(post => {
+                    const normalizedPost = this.normalizePostData(post);
+                    if (!State.posts.has(post.message_id) && 
+                        !State.newPosts.some(p => p.message_id === post.message_id)) {
+                        
+                        if (window.scrollY < 400) {
+                            UI.addPostToTop(normalizedPost);
+                            addedCount++;
+                        } else {
+                            State.newPosts.push(normalizedPost);
+                        }
+                    }
+                });
+                
+                if (addedCount > 0) {
+                    console.log(`Added ${addedCount} new posts from batch`);
+                }
+                UI.updateNewPostsBadge();
+            });
+        },
+        
+        // ✅ НОВЫЙ: Нормализация данных поста
+        normalizePostData(fullMessage) {
+            return {
+                message_id: fullMessage.message_id,
+                text: fullMessage.text || '',
+                date: fullMessage.date,
+                views: fullMessage.views || 0,
+                forwards: fullMessage.forwards || 0,
+                has_media: fullMessage.has_media || !!fullMessage.media,
+                media_type: fullMessage.media?.file_type || fullMessage.media_type,
+                media_url: fullMessage.media?.url || fullMessage.media_url,
+                media_pending: fullMessage.media && !fullMessage.media.uploaded,
+                is_edited: fullMessage.is_edited || false,
+                edit_date: fullMessage.edit_date
+            };
         },
         
         async handleNewMessage(data) {
@@ -1927,19 +2085,7 @@
             const messageId = fullMessage.message_id;
             const actualType = type === 'edit' ? 'edit' : 'new';
             
-            const post = {
-                message_id: messageId,
-                text: fullMessage.text || '',
-                date: fullMessage.date,
-                views: fullMessage.views || 0,
-                forwards: fullMessage.forwards || 0,
-                has_media: fullMessage.has_media || !!fullMessage.media,
-                media_type: fullMessage.media?.file_type || fullMessage.media_type,
-                media_url: fullMessage.media?.url || fullMessage.media_url,
-                media_pending: fullMessage.media && !fullMessage.media.uploaded,
-                is_edited: fullMessage.is_edited || false,
-                edit_date: fullMessage.edit_date
-            };
+            const post = this.normalizePostData(fullMessage);
             
             const existingPost = State.posts.get(messageId);
             const existingInQueue = State.newPosts.some(p => p.message_id === messageId);
@@ -1947,9 +2093,19 @@
             
             if (actualType === 'edit') {
                 if (existingInDOM) {
-                    UI.updatePost(messageId, post);
+                    // Проверяем реальные изменения перед обновлением
                     if (existingPost) {
-                        State.posts.set(messageId, {...post});
+                        const hasChanges = 
+                            post.text !== existingPost.text ||
+                            post.views !== existingPost.views ||
+                            post.media_url !== existingPost.media_url;
+                        
+                        if (hasChanges) {
+                            UI.updatePost(messageId, post);
+                            State.posts.set(messageId, {...post});
+                        }
+                    } else {
+                        UI.updatePost(messageId, post);
                     }
                 } else if (existingInQueue) {
                     const index = State.newPosts.findIndex(p => p.message_id === messageId);
