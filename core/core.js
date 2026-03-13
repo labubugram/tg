@@ -26,7 +26,10 @@
         MAX_MEDIA_CACHE_SIZE: 100,
         CLEANUP_INTERVAL: 60000,
         MEDIA_MAX_RETRIES: 5,
-        MEDIA_RETRY_DELAY: 2000
+        MEDIA_RETRY_DELAY: 2000,
+        // Новая конфигурация для поддержки статусов медиа
+        SUPPORTS_MEDIA_STATUS: true,
+        MEDIA_STATUS_POLL_INTERVAL: 5000
     };
 
     const State = {
@@ -45,6 +48,8 @@
         mediaPending: new Map(),
         mediaRetryCount: new Map(),
         mediaRetryTimeouts: new Map(),
+        // Новое: хранилище статусов медиа
+        mediaStatusStore: new Map(), // media_id -> {status, progress, lastUpdate}
         scrollTimeout: null,
         recentMessages: new Map(),
         lastDocumentHeight: 0,
@@ -64,12 +69,18 @@
         pendingEvents: [],
         lastEventId: 0,
         currentlyPlayingVideo: null,
-        // Новые поля для оптимизации batch-обработки
         batchProcessed: new Set(),
         pendingEdits: new Set(),
-        pendingNews: new Set()
+        pendingNews: new Set(),
+        // Новое: поддерживаемые версии протокола
+        supportedVersions: ['2.0', '3.0'],
+        serverVersion: '3.0'
     };
 
+    // ============================================
+    // УТИЛИТЫ
+    // ============================================
+    
     function cleanupResources() {
         State.intervals.forEach(clearInterval);
         State.intervals = [];
@@ -121,6 +132,13 @@
                 const keysToDelete = Array.from(State.mediaCache.keys())
                     .slice(0, State.mediaCache.size - CONFIG.MAX_MEDIA_CACHE_SIZE);
                 keysToDelete.forEach(key => State.mediaCache.delete(key));
+            }
+            
+            // Очистка старых статусов медиа
+            for (const [mediaId, data] of State.mediaStatusStore.entries()) {
+                if (now - data.lastUpdate > 300000) { // 5 минут
+                    State.mediaStatusStore.delete(mediaId);
+                }
             }
             
             const ttl = CONFIG.DEDUP_TTL * 2;
@@ -207,12 +225,10 @@
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;')
                     .replace(/"/g, '&quot;');
-
             };
 
             const isEmoji = (char) => {
                 const codePoint = char.codePointAt(0);
-
                 return (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) || 
                        (codePoint >= 0x2600 && codePoint <= 0x26FF) ||   
                        (codePoint >= 0x2700 && codePoint <= 0x27BF) ||   
@@ -221,13 +237,11 @@
                        (codePoint >= 0xE0020 && codePoint <= 0xE007F);   
             };
             
-       
             const emojiSequences = [];
             let processed = '';
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
                 if (isEmoji(char)) {
-                    
                     let sequence = '';
                     while (i < text.length && isEmoji(text[i])) {
                         sequence += text[i];
@@ -333,7 +347,6 @@
                     escaped = before + wrapped + after;
                 }
             } else {
-
                 escaped = escaped.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
                 escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
                 escaped = escaped.replace(/__(.*?)__/g, '<u>$1</u>');
@@ -381,7 +394,6 @@
                     return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${displayText}</a>`;
                 });
             }).join('');
-
 
             escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
@@ -661,6 +673,26 @@
             return null;
         },
         
+        // НОВЫЙ: Получение статуса медиа
+        async fetchMediaStatus(messageId) {
+            if (!Security.validateMessageId(messageId)) return null;
+            
+            try {
+                const url = `${CONFIG.API_BASE}/api/media/status/${messageId}?channel_id=${CONFIG.CHANNEL_ID}`;
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    if (response.status === 404) return null;
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (err) {
+                console.error(`Error fetching media status for ${messageId}:`, err);
+                return null;
+            }
+        },
+        
         clearMediaCache() {
             State.mediaCache.clear();
             State.mediaErrorCache.clear();
@@ -668,6 +700,7 @@
             State.mediaRetryCount.clear();
             State.mediaRetryTimeouts.forEach(clearTimeout);
             State.mediaRetryTimeouts.clear();
+            State.mediaStatusStore.clear();
         }
     };
 
@@ -803,9 +836,13 @@
         }
     };
 
+    // ============================================
+    // УЛУЧШЕННЫЙ MediaManager с поддержкой статусов
+    // ============================================
+    
     const MediaManager = {
         replaceMediaContainer(postEl, html, messageId) {
-            const old = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-placeholder, .media-pending');
+            const old = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-placeholder, .media-pending, .media-processing');
             if (!old) return null;
             
             old.outerHTML = html;
@@ -818,6 +855,72 @@
             }
             
             return postEl.querySelector('.media-container');
+        },
+        
+        // НОВЫЙ: Обновление UI на основе статуса
+        updateMediaStatus(messageId, status, progress) {
+            const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+            if (!postEl) return false;
+            
+            const mediaContainer = postEl.querySelector('.media-container, .media-loading, .media-pending, .media-processing, .media-unavailable');
+            
+            if (!mediaContainer) {
+                // Если контейнера нет, но есть статус - создаем
+                if (status !== 'ready') {
+                    const postContent = postEl.querySelector('.post-content');
+                    if (postContent) {
+                        let statusHTML = '';
+                        switch(status) {
+                            case 'downloading':
+                                statusHTML = `<div class="media-processing">📥 Downloading... ${progress}%</div>`;
+                                break;
+                            case 'processing':
+                                statusHTML = `<div class="media-processing">⚙️ Processing... ${progress}%</div>`;
+                                break;
+                            case 'uploading':
+                                statusHTML = `<div class="media-processing">☁️ Uploading to CDN... ${progress}%</div>`;
+                                break;
+                            case 'failed':
+                                statusHTML = `<div class="media-unavailable">❌ Media failed to load</div>`;
+                                break;
+                            default:
+                                statusHTML = `<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>`;
+                        }
+                        postContent.insertAdjacentHTML('beforeend', statusHTML);
+                    }
+                }
+                return true;
+            }
+            
+            // Обновляем существующий контейнер
+            if (status === 'ready') {
+                // Если статус ready, но медиа еще не загружено - запрашиваем
+                const post = State.posts.get(messageId);
+                if (post && !post.media_url) {
+                    this.loadMedia(messageId);
+                }
+            } else if (status === 'downloading' || status === 'processing' || status === 'uploading') {
+                if (mediaContainer.classList.contains('media-loading') || 
+                    mediaContainer.classList.contains('media-pending')) {
+                    mediaContainer.outerHTML = `<div class="media-processing">${this.getStatusText(status)} ${progress}%</div>`;
+                } else if (mediaContainer.classList.contains('media-processing')) {
+                    mediaContainer.textContent = `${this.getStatusText(status)} ${progress}%`;
+                }
+            } else if (status === 'failed') {
+                mediaContainer.outerHTML = '<div class="media-unavailable">❌ Media failed to load</div>';
+                State.mediaErrorCache.add(messageId);
+            }
+            
+            return true;
+        },
+        
+        getStatusText(status) {
+            switch(status) {
+                case 'downloading': return '📥 Downloading';
+                case 'processing': return '⚙️ Processing';
+                case 'uploading': return '☁️ Uploading to CDN';
+                default: return '⏳ Processing';
+            }
         },
         
         unloadMedia(messageId) {
@@ -931,10 +1034,24 @@
             if (post.media_url) return;
             if (State.mediaErrorCache.has(messageId)) return;
             
+            // Проверяем статус из хранилища
+            const statusInfo = State.mediaStatusStore.get(messageId);
+            if (statusInfo) {
+                this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress);
+                
+                // Если статус 'processing' или 'uploading', планируем повторную проверку
+                if (statusInfo.status === 'processing' || statusInfo.status === 'uploading') {
+                    safeSetTimeout(() => {
+                        this.loadMedia(messageId);
+                    }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
+                    return;
+                }
+            }
+            
             if (isRetry) {
                 const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
                 if (postEl) {
-                    const pendingEl = postEl.querySelector('.media-pending, .media-loading');
+                    const pendingEl = postEl.querySelector('.media-pending, .media-loading, .media-processing');
                     if (!pendingEl) {
                         const unavailableEl = postEl.querySelector('.media-unavailable');
                         if (unavailableEl) {
@@ -957,25 +1074,49 @@
                         media_type: post.media_type
                     });
                     State.mediaRetryCount.delete(messageId);
+                    State.mediaStatusStore.delete(messageId);
                     return;
                 }
                 
                 if (mediaInfo && mediaInfo.error === 'not_found') {
-                    const currentRetries = State.mediaRetryCount.get(messageId) || 0;
-                    State.mediaRetryCount.set(messageId, currentRetries + 1);
-                    
-                    const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
-                    if (postEl) {
-                        const container = postEl.querySelector('.media-loading, .media-pending');
-                        if (!container) {
-                            const postContent = postEl.querySelector('.post-content');
-                            if (postContent && !postContent.querySelector('.media-loading, .media-pending')) {
-                                postContent.insertAdjacentHTML('beforeend', '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>');
+                    // Проверяем статус через API
+                    API.fetchMediaStatus(messageId).then(statusInfo => {
+                        if (statusInfo && statusInfo.exists) {
+                            if (statusInfo.status) {
+                                this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress || 0);
+                                
+                                // Если не ready, планируем повторную проверку
+                                if (statusInfo.status !== 'ready') {
+                                    State.mediaStatusStore.set(messageId, {
+                                        status: statusInfo.status,
+                                        progress: statusInfo.progress || 0,
+                                        lastUpdate: Date.now()
+                                    });
+                                    
+                                    safeSetTimeout(() => {
+                                        this.loadMedia(messageId);
+                                    }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
+                                }
                             }
+                        } else {
+                            // Статус не найден - пробуем повторить
+                            const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                            State.mediaRetryCount.set(messageId, currentRetries + 1);
+                            
+                            const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                            if (postEl) {
+                                const container = postEl.querySelector('.media-loading, .media-pending');
+                                if (!container) {
+                                    const postContent = postEl.querySelector('.post-content');
+                                    if (postContent && !postContent.querySelector('.media-loading, .media-pending')) {
+                                        postContent.insertAdjacentHTML('beforeend', '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>');
+                                    }
+                                }
+                            }
+                            
+                            this.retryMedia(messageId);
                         }
-                    }
-                    
-                    this.retryMedia(messageId);
+                    });
                     return;
                 }
                 
@@ -1016,6 +1157,7 @@
             State.mediaPending.delete(messageId);
             State.mediaLoading.delete(messageId);
             State.mediaRetryCount.delete(messageId);
+            State.mediaStatusStore.delete(messageId);
             
             if (State.mediaRetryTimeouts.has(messageId)) {
                 clearTimeout(State.mediaRetryTimeouts.get(messageId));
@@ -1026,6 +1168,30 @@
             
             if (State.mediaCache.size > CONFIG.MAX_MEDIA_CACHE_SIZE * 1.2) {
                 CacheManager.cleanup();
+            }
+        },
+        
+        // НОВЫЙ: Обработка статуса медиа
+        handleMediaStatus(messageId, status, progress, mediaId) {
+            const post = State.posts.get(messageId);
+            if (!post || !post.has_media) return;
+            
+            // Сохраняем статус
+            State.mediaStatusStore.set(messageId, {
+                status,
+                progress,
+                mediaId,
+                lastUpdate: Date.now()
+            });
+            
+            // Обновляем UI
+            this.updateMediaStatus(messageId, status, progress);
+            
+            // Если статус 'ready' - загружаем медиа
+            if (status === 'ready') {
+                safeSetTimeout(() => {
+                    this.loadMedia(messageId);
+                }, 500);
             }
         },
         
@@ -1274,11 +1440,32 @@
             if (post.media_url) {
                 mediaHTML = this.renderMedia(post.media_url, post.media_type);
             } else if (post.has_media) {
-                const retryCount = State.mediaRetryCount.get(post.message_id) || 0;
-                if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
-                    mediaHTML = '<div class="media-unavailable">📷 Media unavailable</div>';
+                // Проверяем статус из хранилища
+                const statusInfo = State.mediaStatusStore.get(post.message_id);
+                if (statusInfo) {
+                    switch(statusInfo.status) {
+                        case 'downloading':
+                            mediaHTML = `<div class="media-processing">📥 Downloading... ${statusInfo.progress}%</div>`;
+                            break;
+                        case 'processing':
+                            mediaHTML = `<div class="media-processing">⚙️ Processing... ${statusInfo.progress}%</div>`;
+                            break;
+                        case 'uploading':
+                            mediaHTML = `<div class="media-processing">☁️ Uploading to CDN... ${statusInfo.progress}%</div>`;
+                            break;
+                        case 'failed':
+                            mediaHTML = '<div class="media-unavailable">❌ Media failed to load</div>';
+                            break;
+                        default:
+                            mediaHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                    }
                 } else {
-                    mediaHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                    const retryCount = State.mediaRetryCount.get(post.message_id) || 0;
+                    if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
+                        mediaHTML = '<div class="media-unavailable">📷 Media unavailable</div>';
+                    } else {
+                        mediaHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                    }
                 }
             }
             
@@ -1326,7 +1513,6 @@
             const currentPost = State.posts.get(Number(messageId));
             
             if (currentPost) {
-                // Проверяем, есть ли реальные изменения
                 const hasChanges = 
                     (data.edit_date && currentPost.edit_date !== data.edit_date) ||
                     (data.text !== undefined && currentPost.text !== data.text) ||
@@ -1335,7 +1521,7 @@
                     (data.media_url && currentPost.media_url !== data.media_url);
                 
                 if (!hasChanges) {
-                    return false; // Нет изменений - ничего не делаем
+                    return false;
                 }
                 
                 State.posts.set(Number(messageId), {...currentPost, ...data});
@@ -1391,7 +1577,7 @@
             }
             
             if (data.media_url) {
-                const mediaContainer = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-pending');
+                const mediaContainer = postEl.querySelector('.media-container, .media-loading, .media-unavailable, .media-pending, .media-processing');
                 if (mediaContainer) {
                     const video = mediaContainer.querySelector('video');
                     if (video) VideoManager.pauseVideo(video);
@@ -1415,12 +1601,9 @@
                 }
             }
             
-            if (changed) {
-                // Если это batch-обновление, не показываем анимацию
-                if (!options.batch) {
-                    postEl.classList.add('updated');
-                    safeSetTimeout(() => postEl.classList.remove('updated'), 2000);
-                }
+            if (changed && !options.batch) {
+                postEl.classList.add('updated');
+                safeSetTimeout(() => postEl.classList.remove('updated'), 2000);
             }
             
             return changed;
@@ -1434,7 +1617,7 @@
             const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (!postEl) return false;
             
-            const mediaContainer = postEl.querySelector('.media-loading, .media-pending, .media-container');
+            const mediaContainer = postEl.querySelector('.media-loading, .media-pending, .media-container, .media-processing');
             if (mediaContainer) {
                 const video = mediaContainer.querySelector('video');
                 if (video) VideoManager.pauseVideo(video);
@@ -1483,6 +1666,7 @@
                 State.mediaPending.delete(messageId);
                 State.mediaLoading.delete(messageId);
                 State.mediaRetryCount.delete(messageId);
+                State.mediaStatusStore.delete(messageId);
                 State.fullMessageCache.delete(messageId);
             }, 300);
             
@@ -1669,6 +1853,7 @@
                 State.mediaPending.clear();
                 State.mediaLoading.clear();
                 State.mediaRetryCount.clear();
+                State.mediaStatusStore.clear();
                 State.mediaRetryTimeouts.forEach(clearTimeout);
                 State.mediaRetryTimeouts.clear();
                 document.getElementById('feed').innerHTML = '';
@@ -1745,8 +1930,9 @@
     }
 
     // ============================================
-    // ИСПРАВЛЕННЫЙ WebSocketManager
+    // ИСПРАВЛЕННЫЙ WebSocketManager с поддержкой v3.0
     // ============================================
+    
     const WebSocketManager = {
         giveUp: false,
         giveUpTimer: null,
@@ -1843,8 +2029,17 @@
             }
         },
         
-        // ✅ НОВЫЙ: Основной обработчик сообщений
+        // ОСНОВНОЙ ОБРАБОТЧИК - исправлен для поддержки v3.0
         handleMessage(data) {
+            // Обработка welcome сообщения
+            if (data.type === 'welcome') {
+                if (data.version && State.supportedVersions.includes(data.version)) {
+                    State.serverVersion = data.version;
+                    console.log(`Connected to server v${data.version}`);
+                }
+                return;
+            }
+            
             if (data.event_id && data.event_id > State.lastEventId) {
                 State.lastEventId = data.event_id;
             }
@@ -1856,19 +2051,23 @@
             }
             
             // Пропускаем служебные сообщения
-            if (['ping', 'pong', 'welcome', 'heartbeat', 'buffering', 
+            if (['ping', 'pong', 'heartbeat', 'buffering', 
                  'flush_start', 'flush_complete', 'subscribed', 'error'].includes(data.type)) {
                 return;
             }
             
-            // Проверка версии и канала
-            if (data.version !== '2.0') return;
+            // Проверка версии - поддерживаем 2.0 и 3.0
+            if (data.version && !State.supportedVersions.includes(data.version)) {
+                return;
+            }
+            
+            // Проверка канала
             if (data.channel_id !== parseInt(CONFIG.CHANNEL_ID)) return;
             
             // Если начальная загрузка не завершена, сохраняем в очередь
             if (!State.initialLoadComplete) {
                 State.pendingEvents.push({
-                    data: data.data,
+                    data: data.data || data,
                     type: data.type
                 });
                 return;
@@ -1889,7 +2088,7 @@
             this.handleSingleEvent(data);
         },
         
-        // ✅ НОВЫЙ: Обработка одиночных событий
+        // Обработка одиночных событий
         handleSingleEvent(data) {
             switch (data.type) {
                 case 'new':
@@ -1904,10 +2103,24 @@
                 case 'media_ready':
                     this.handleMediaReady(data);
                     break;
+                case 'media_status': // НОВЫЙ тип
+                    this.handleMediaStatus(data);
+                    break;
             }
         },
         
-        // ✅ НОВЫЙ: Обработка batch-событий (оптимизированная)
+        // НОВЫЙ: Обработка статусов медиа
+        handleMediaStatus(data) {
+            console.log(`Media status: msg=${data.message_id}, status=${data.status}, progress=${data.progress}%`);
+            MediaManager.handleMediaStatus(
+                data.message_id, 
+                data.status, 
+                data.progress, 
+                data.media_id
+            );
+        },
+        
+        // Обработка batch-событий (оптимизированная)
         handleEventBatch(batch) {
             console.log(`Processing batch of ${batch.events.length} events, is_replay: ${batch.is_replay}`);
             
@@ -1916,9 +2129,13 @@
             const news = [];
             const deletes = [];
             const mediaReadies = [];
+            const mediaStatuses = []; // НОВЫЙ
             
             batch.events.forEach(event => {
                 if (event.channel_id !== parseInt(CONFIG.CHANNEL_ID)) return;
+                
+                // Проверка версии
+                if (event.version && !State.supportedVersions.includes(event.version)) return;
                 
                 // Дедупликация внутри batch
                 const messageKey = `${event.channel_id}-${event.message_id}-${event.type}`;
@@ -1937,6 +2154,9 @@
                         break;
                     case 'media_ready':
                         mediaReadies.push(event);
+                        break;
+                    case 'media_status': // НОВЫЙ
+                        mediaStatuses.push(event);
                         break;
                 }
             });
@@ -1961,22 +2181,21 @@
             
             // Обрабатываем media_ready
             mediaReadies.forEach(event => this.handleMediaReady(event));
+            
+            // Обрабатываем media_status (НОВЫЙ)
+            mediaStatuses.forEach(event => this.handleMediaStatus(event));
         },
         
-        // ✅ НОВЫЙ: Пакетная обработка edit-событий
+        // Пакетная обработка edit-событий
         async handleBatchEdits(editEvents, isReplay = false) {
             console.log(`Processing ${editEvents.length} edit events in batch`);
             
-            // Собираем все ID сообщений для обновления
             const messageIds = editEvents.map(e => e.message_id);
             
-            // Инвалидируем кэш для всех
             messageIds.forEach(id => MessageAPI.invalidateMessage(id));
             
-            // Загружаем все обновленные сообщения одним запросом
             const messages = await MessageAPI.fetchBatchMessages(messageIds);
             
-            // Обновляем UI для каждого сообщения, если есть изменения
             let updatedCount = 0;
             Object.entries(messages).forEach(([id, fullMessage]) => {
                 const messageId = parseInt(id);
@@ -1984,7 +2203,6 @@
                 
                 if (!post) return;
                 
-                // Проверяем, есть ли реальные изменения
                 const hasChanges = 
                     (fullMessage.text !== undefined && post.text !== fullMessage.text) ||
                     (fullMessage.views !== undefined && post.views !== fullMessage.views) ||
@@ -1992,7 +2210,6 @@
                     (fullMessage.edit_date && post.edit_date !== fullMessage.edit_date);
                 
                 if (hasChanges) {
-                    // Используем тихое обновление для batch
                     UI.updatePostQuiet(messageId, this.normalizePostData(fullMessage));
                     updatedCount++;
                 }
@@ -2003,7 +2220,7 @@
             }
         },
         
-        // ✅ НОВЫЙ: Пакетная обработка новых сообщений
+        // Пакетная обработка новых сообщений
         handleBatchNews(newEvents) {
             const messageIds = newEvents.map(e => e.message_id);
             MessageAPI.fetchBatchMessages(messageIds).then(messages => {
@@ -2032,7 +2249,7 @@
             });
         },
         
-        // ✅ НОВЫЙ: Нормализация данных поста
+        // Нормализация данных поста
         normalizePostData(fullMessage) {
             return {
                 message_id: fullMessage.message_id,
@@ -2080,6 +2297,19 @@
             MessageAPI.invalidateMessage(data.message_id);
         },
         
+        handleDeleteMessage(data) {
+            State.posts.delete(data.message_id);
+            const index = State.postOrder.indexOf(data.message_id);
+            if (index !== -1) State.postOrder.splice(index, 1);
+            
+            UI.deletePost(data.message_id);
+            State.mediaPending.delete(data.message_id);
+            State.mediaLoading.delete(data.message_id);
+            State.mediaRetryCount.delete(data.message_id);
+            State.mediaStatusStore.delete(data.message_id);
+            State.fullMessageCache.delete(data.message_id);
+        },
+        
         processFullMessage(fullMessage, type = 'new') {
             const messageId = fullMessage.message_id;
             const actualType = type === 'edit' ? 'edit' : 'new';
@@ -2092,7 +2322,6 @@
             
             if (actualType === 'edit') {
                 if (existingInDOM) {
-                    // Проверяем реальные изменения перед обновлением
                     if (existingPost) {
                         const hasChanges = 
                             post.text !== existingPost.text ||
@@ -2132,18 +2361,6 @@
                     MediaManager.loadMedia(messageId);
                 }, 500);
             }
-        },
-        
-        handleDeleteMessage(data) {
-            State.posts.delete(data.message_id);
-            const index = State.postOrder.indexOf(data.message_id);
-            if (index !== -1) State.postOrder.splice(index, 1);
-            
-            UI.deletePost(data.message_id);
-            State.mediaPending.delete(data.message_id);
-            State.mediaLoading.delete(data.message_id);
-            State.mediaRetryCount.delete(data.message_id);
-            State.fullMessageCache.delete(data.message_id);
         },
         
         flushNewPosts() {
@@ -2300,5 +2517,3 @@
         init();
     }
 })();
-
-
