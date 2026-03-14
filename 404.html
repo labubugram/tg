@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>404 — Страница не найдена</title>
+    <style>
+        body {
+            margin: 0;
+            height: 100vh;
+            background: #0d1117;           
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        video {
+            max-width: 90vw;               
+            max-height: 90vh;
+            width: auto;
+            height: auto;               
+            opacity: 0;
+            animation: videoCycle 15s ease-in-out infinite;
+            object-fit: contain;         
+        }
+
+        @keyframes videoCycle {
+            0%    { opacity: 0; }
+            6.7%  { opacity: 1; }   
+            80%   { opacity: 1; }   
+            86.7% { opacity: 0; }  
+            100%  { opacity: 0; }  
+        }
+    </style>
+</head>
+<body>
+
+    <video autoplay loop muted playsinline preload="auto">
+        <source src="loop.mp4" type="video/mp4">
+
+        Твой браузер не поддерживает видео.
+    </video>
+
+</body>
+</html>
