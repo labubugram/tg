@@ -25,14 +25,20 @@
         MAX_CACHE_SIZE: 200,
         MAX_MEDIA_CACHE_SIZE: 100,
         CLEANUP_INTERVAL: 60000,
-        MEDIA_MAX_RETRIES: 5,
+        MEDIA_MAX_RETRIES: 3,
         MEDIA_RETRY_DELAY: 2000,
         SUPPORTS_MEDIA_STATUS: true,
         MEDIA_STATUS_POLL_INTERVAL: 5000,
         MEDIA_PENDING_TIMEOUT: 300000,
         MEDIA_FAILED_TIMEOUT: 3600000,
         MEDIA_READY_DELAY: 1000,
-        MEDIA_RETRY_ON_ERROR: true
+        MEDIA_RETRY_ON_ERROR: true,
+        // ========== НОВЫЕ ПАРАМЕТРЫ ДЛЯ УПРАВЛЕНИЯ ЗАГРУЗКАМИ ==========
+        MAX_CONCURRENT_LOADS: 3,           // Максимум одновременных загрузок
+        MEDIA_LOAD_TIMEOUT: 30000,          // Таймаут загрузки медиа (30 сек)
+        VIDEO_PRELOAD: 'metadata',          // Предзагрузка только метаданных
+        RETRY_ON_NETWORK_ERROR: true,       // Повтор при сетевых ошибках
+        USE_LAZY_LOADING: true               // Использовать ленивую загрузку
     };
 
     const State = {
@@ -53,6 +59,10 @@
         mediaRetryTimeouts: new Map(),
         mediaStatusStore: new Map(),
         mediaReadyQueue: new Set(),
+        // ========== НОВЫЕ СОСТОЯНИЯ ДЛЯ УПРАВЛЕНИЯ ЗАГРУЗКАМИ ==========
+        activeLoads: 0,                      // Количество активных загрузок
+        loadQueue: [],                        // Очередь ожидающих загрузок
+        failedMedia: new Map(),                // Храним причину отказа для отладки
         scrollTimeout: null,
         recentMessages: new Map(),
         lastDocumentHeight: 0,
@@ -102,6 +112,10 @@
         
         State.mediaRetryTimeouts.forEach(clearTimeout);
         State.mediaRetryTimeouts.clear();
+        
+        // Очищаем очередь загрузок
+        State.loadQueue = [];
+        State.activeLoads = 0;
     }
 
     function safeSetTimeout(fn, delay) {
@@ -157,6 +171,13 @@
                 if (data.timestamp < fiveMinutesAgo) {
                     State.mediaPending.delete(messageId);
                     State.mediaRetryCount.delete(messageId);
+                }
+            }
+            
+            // Очищаем failedMedia
+            for (const [messageId, data] of State.failedMedia.entries()) {
+                if (now - data.timestamp > 3600000) { // 1 час
+                    State.failedMedia.delete(messageId);
                 }
             }
         },
@@ -706,6 +727,9 @@
             State.mediaRetryTimeouts.clear();
             State.mediaStatusStore.clear();
             State.mediaReadyQueue.clear();
+            State.failedMedia.clear();
+            State.loadQueue = [];
+            State.activeLoads = 0;
         }
     };
 
@@ -754,6 +778,16 @@
             if (State.currentlyPlayingVideo === video) {
                 State.currentlyPlayingVideo = null;
             }
+        },
+        
+        // ========== НОВЫЙ МЕТОД: Принудительная остановка всех загрузок ==========
+        abortAllLoads() {
+            document.querySelectorAll('video[data-loading="true"]').forEach(video => {
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
+                video.removeAttribute('data-loading');
+            });
         }
     };
 
@@ -842,7 +876,7 @@
     };
 
     // ============================================
-    // MediaManager с поддержкой статусов
+    // УЛУЧШЕННЫЙ MediaManager с контролем параллельных загрузок
     // ============================================
     
     const MediaManager = {
@@ -928,6 +962,141 @@
             }
         },
         
+        // ========== НОВЫЙ МЕТОД: Запуск следующей загрузки из очереди ==========
+        processNextInQueue() {
+            if (State.activeLoads >= CONFIG.MAX_CONCURRENT_LOADS || State.loadQueue.length === 0) {
+                return;
+            }
+            
+            const nextMessageId = State.loadQueue.shift();
+            if (!nextMessageId) return;
+            
+            State.activeLoads++;
+            this._performLoad(nextMessageId).finally(() => {
+                State.activeLoads--;
+                this.processNextInQueue();
+            });
+        },
+        
+        // ========== НОВЫЙ МЕТОД: Фактическая загрузка с таймаутом ==========
+        async _performLoad(messageId) {
+            const post = State.posts.get(messageId);
+            if (!post || !post.has_media || post.media_url) {
+                return;
+            }
+            
+            // Устанавливаем таймаут для загрузки
+            const timeoutPromise = new Promise((_, reject) => {
+                safeSetTimeout(() => reject(new Error('Media load timeout')), CONFIG.MEDIA_LOAD_TIMEOUT);
+            });
+            
+            try {
+                const mediaInfo = await Promise.race([
+                    API.fetchMediaOnce(messageId),
+                    timeoutPromise
+                ]);
+                
+                if (mediaInfo && mediaInfo.url) {
+                    post.media_url = mediaInfo.url;
+                    post.media_type = mediaInfo.file_type || post.media_type;
+                    UI.updatePost(messageId, {
+                        media_url: mediaInfo.url,
+                        media_type: post.media_type
+                    });
+                    State.mediaRetryCount.delete(messageId);
+                    State.mediaStatusStore.delete(messageId);
+                    State.failedMedia.delete(messageId);
+                } else if (mediaInfo && mediaInfo.error) {
+                    throw new Error(mediaInfo.error);
+                }
+            } catch (error) {
+                console.error(`Failed to load media for message ${messageId}:`, error);
+                
+                // Сохраняем информацию об ошибке
+                State.failedMedia.set(messageId, {
+                    error: error.message,
+                    timestamp: Date.now()
+                });
+                
+                const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                if (currentRetries < CONFIG.MEDIA_MAX_RETRIES) {
+                    State.mediaRetryCount.set(messageId, currentRetries + 1);
+                    
+                    // Добавляем обратно в очередь с задержкой
+                    safeSetTimeout(() => {
+                        this.queueMediaLoad(messageId, true);
+                    }, CONFIG.MEDIA_RETRY_DELAY * Math.pow(2, currentRetries));
+                } else {
+                    UI.updatePostMediaUnavailable(messageId, 'max_retries');
+                    State.mediaRetryCount.delete(messageId);
+                }
+            }
+        },
+        
+        // ========== НОВЫЙ МЕТОД: Постановка в очередь на загрузку ==========
+        queueMediaLoad(messageId, isRetry = false) {
+            if (State.mediaLoading.has(messageId)) {
+                return;
+            }
+            
+            const post = State.posts.get(messageId);
+            if (!post || !post.has_media) return;
+            if (post.media_url) return;
+            if (State.mediaErrorCache.has(messageId)) return;
+            
+            State.mediaLoading.add(messageId);
+            
+            // Проверяем, не в очереди ли уже
+            if (!State.loadQueue.includes(messageId)) {
+                State.loadQueue.push(messageId);
+            }
+            
+            this.processNextInQueue();
+        },
+        
+        // ========== ИСПРАВЛЕННЫЙ loadMedia ==========
+        loadMedia(messageId, isRetry = false) {
+            if (State.mediaLoading.has(messageId)) {
+                return;
+            }
+            
+            const post = State.posts.get(messageId);
+            if (!post || !post.has_media) return;
+            
+            if (post.media_url) return;
+            if (State.mediaErrorCache.has(messageId)) return;
+            
+            State.mediaReadyQueue.delete(messageId);
+            
+            const statusInfo = State.mediaStatusStore.get(messageId);
+            if (statusInfo) {
+                this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress);
+                
+                if (statusInfo.status === 'processing' || statusInfo.status === 'uploading') {
+                    safeSetTimeout(() => {
+                        this.loadMedia(messageId);
+                    }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
+                    return;
+                }
+            }
+            
+            if (isRetry) {
+                const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                if (postEl) {
+                    const pendingEl = postEl.querySelector('.media-pending, .media-loading, .media-processing');
+                    if (!pendingEl) {
+                        const unavailableEl = postEl.querySelector('.media-unavailable');
+                        if (unavailableEl) {
+                            unavailableEl.outerHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                        }
+                    }
+                }
+            }
+            
+            // Ставим в очередь вместо прямой загрузки
+            this.queueMediaLoad(messageId, isRetry);
+        },
+        
         unloadMedia(messageId) {
             if (!CONFIG.IMAGE_UNLOAD_DISTANCE) return false;
             
@@ -958,6 +1127,14 @@
                             placeholder.textContent = '📹';
                             mediaContainer.appendChild(placeholder);
                         }
+                        
+                        // Удаляем из очереди загрузок
+                        const index = State.loadQueue.indexOf(parseInt(messageId));
+                        if (index > -1) {
+                            State.loadQueue.splice(index, 1);
+                        }
+                        State.mediaLoading.delete(parseInt(messageId));
+                        
                         return true;
                     }
                     
@@ -973,6 +1150,13 @@
                             placeholder.textContent = '📷';
                             mediaContainer.appendChild(placeholder);
                         }
+                        
+                        const index = State.loadQueue.indexOf(parseInt(messageId));
+                        if (index > -1) {
+                            State.loadQueue.splice(index, 1);
+                        }
+                        State.mediaLoading.delete(parseInt(messageId));
+                        
                         return true;
                     }
                 }
@@ -1028,131 +1212,6 @@
             State.mediaRetryTimeouts.set(messageId, timeoutId);
         },
         
-        loadMedia(messageId, isRetry = false) {
-            if (State.mediaLoading.has(messageId)) {
-                return;
-            }
-            
-            const post = State.posts.get(messageId);
-            if (!post || !post.has_media) return;
-            
-            if (post.media_url) return;
-            if (State.mediaErrorCache.has(messageId)) return;
-            
-            State.mediaReadyQueue.delete(messageId);
-            
-            const statusInfo = State.mediaStatusStore.get(messageId);
-            if (statusInfo) {
-                this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress);
-                
-                if (statusInfo.status === 'processing' || statusInfo.status === 'uploading') {
-                    safeSetTimeout(() => {
-                        this.loadMedia(messageId);
-                    }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
-                    return;
-                }
-                
-                if (statusInfo.status === 'ready') {
-                    // Продолжаем выполнение - загружаем медиа
-                }
-            }
-            
-            if (isRetry) {
-                const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
-                if (postEl) {
-                    const pendingEl = postEl.querySelector('.media-pending, .media-loading, .media-processing');
-                    if (!pendingEl) {
-                        const unavailableEl = postEl.querySelector('.media-unavailable');
-                        if (unavailableEl) {
-                            unavailableEl.outerHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
-                        }
-                    }
-                }
-            }
-            
-            State.mediaLoading.add(messageId);
-            
-            API.fetchMediaOnce(messageId).then(mediaInfo => {
-                State.mediaLoading.delete(messageId);
-                
-                if (mediaInfo && mediaInfo.url) {
-                    post.media_url = mediaInfo.url;
-                    post.media_type = mediaInfo.file_type || post.media_type;
-                    UI.updatePost(messageId, {
-                        media_url: mediaInfo.url,
-                        media_type: post.media_type
-                    });
-                    State.mediaRetryCount.delete(messageId);
-                    State.mediaStatusStore.delete(messageId);
-                    return;
-                }
-                
-                if (mediaInfo && mediaInfo.error === 'not_found') {
-                    API.fetchMediaStatus(messageId).then(statusInfo => {
-                        if (statusInfo && statusInfo.exists) {
-                            if (statusInfo.status) {
-                                this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress || 0);
-                                
-                                State.mediaStatusStore.set(messageId, {
-                                    status: statusInfo.status,
-                                    progress: statusInfo.progress || 0,
-                                    lastUpdate: Date.now()
-                                });
-                                
-                                if (statusInfo.status !== 'ready') {
-                                    safeSetTimeout(() => {
-                                        this.loadMedia(messageId);
-                                    }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
-                                } else {
-                                    safeSetTimeout(() => {
-                                        this.loadMedia(messageId);
-                                    }, 500);
-                                }
-                            }
-                        } else {
-                            const currentRetries = State.mediaRetryCount.get(messageId) || 0;
-                            State.mediaRetryCount.set(messageId, currentRetries + 1);
-                            
-                            const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
-                            if (postEl) {
-                                const container = postEl.querySelector('.media-loading, .media-pending');
-                                if (!container) {
-                                    const postContent = postEl.querySelector('.post-content');
-                                    if (postContent && !postContent.querySelector('.media-loading, .media-pending')) {
-                                        postContent.insertAdjacentHTML('beforeend', '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>');
-                                    }
-                                }
-                            }
-                            
-                            this.retryMedia(messageId);
-                        }
-                    });
-                    return;
-                }
-                
-                const currentRetries = State.mediaRetryCount.get(messageId) || 0;
-                State.mediaRetryCount.set(messageId, currentRetries + 1);
-                
-                if (currentRetries < CONFIG.MEDIA_MAX_RETRIES - 1) {
-                    this.retryMedia(messageId);
-                } else {
-                    UI.updatePostMediaUnavailable(messageId, 'error');
-                }
-                
-            }).catch(() => {
-                State.mediaLoading.delete(messageId);
-                
-                const currentRetries = State.mediaRetryCount.get(messageId) || 0;
-                State.mediaRetryCount.set(messageId, currentRetries + 1);
-                
-                if (currentRetries < CONFIG.MEDIA_MAX_RETRIES - 1) {
-                    this.retryMedia(messageId);
-                } else {
-                    UI.updatePostMediaUnavailable(messageId, 'error');
-                }
-            });
-        },
-        
         handleMediaReady(messageId, mediaUrl, mediaType) {
             const post = State.posts.get(messageId);
             if (post) {
@@ -1169,6 +1228,13 @@
             State.mediaRetryCount.delete(messageId);
             State.mediaStatusStore.delete(messageId);
             State.mediaReadyQueue.delete(messageId);
+            State.failedMedia.delete(messageId);
+            
+            // Удаляем из очереди если был
+            const index = State.loadQueue.indexOf(messageId);
+            if (index > -1) {
+                State.loadQueue.splice(index, 1);
+            }
             
             if (State.mediaRetryTimeouts.has(messageId)) {
                 clearTimeout(State.mediaRetryTimeouts.get(messageId));
@@ -1353,7 +1419,6 @@
             }
         },
         
-        // ========== ИСПРАВЛЕНИЕ: Убираем inline-обработчики, добавляем data-атрибуты ==========
         renderMedia(url, type) {
             if (!url) return '';
             const fullUrl = url.startsWith('http') ? url : `${CONFIG.API_BASE}${url}`;
@@ -1385,7 +1450,6 @@
                     fullUrl.includes('_gif.') ||
                     fullUrl.includes('.gif?');
                 
-                // Создаем уникальный ID для видео
                 const videoId = `video-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 
                 if (isGifLike) {
@@ -1398,7 +1462,7 @@
                                 loop 
                                 muted 
                                 playsinline
-                                preload="auto"
+                                preload="${CONFIG.VIDEO_PRELOAD}"
                                 style="max-width:100%; max-height:500px; background:#282c3000;"
                                 data-message-id="${State.posts.size}">
                                 Your browser does not support video.
@@ -1412,7 +1476,7 @@
                                 id="${videoId}"
                                 src="${fullUrl}" 
                                 controls 
-                                preload="metadata" 
+                                preload="${CONFIG.VIDEO_PRELOAD}" 
                                 playsinline
                                 style="max-width:100%; max-height:500px; background:#282c3000;"
                                 data-message-id="${State.posts.size}">
@@ -1437,19 +1501,40 @@
             }
         },
         
-        // ========== ИСПРАВЛЕНИЕ: Добавляем обработчики событий после рендера ==========
         attachMediaHandlers(postEl) {
             const videos = postEl.querySelectorAll('video');
             videos.forEach(video => {
                 video.addEventListener('play', () => VideoManager.handleVideoPlay(video));
                 video.addEventListener('pause', () => VideoManager.handleVideoPause(video));
-                video.addEventListener('error', () => {
-                    console.error('Video failed to load:', video.src);
-                    const container = video.closest('.media-container');
-                    if (container) {
-                        container.innerHTML = '<div class="media-error">🎥 Failed to load video</div>';
+                
+                // Улучшенная обработка ошибок
+                video.addEventListener('error', (e) => {
+                    console.error(`Video failed to load: ${video.src}`, e);
+                    
+                    // Проверяем, не ошибка ли это сети (нет интернета)
+                    const error = video.error;
+                    if (error && error.code === MediaError.MEDIA_ERR_NETWORK) {
+                        // Сетевая ошибка - пробуем перезагрузить позже
+                        const messageId = video.closest('.post')?.dataset.messageId;
+                        if (messageId && CONFIG.RETRY_ON_NETWORK_ERROR) {
+                            safeSetTimeout(() => {
+                                video.load();
+                                video.play().catch(() => {});
+                            }, 5000);
+                        }
+                    } else {
+                        // Другие ошибки - показываем сообщение
+                        const container = video.closest('.media-container');
+                        if (container && !container.querySelector('.media-error')) {
+                            container.innerHTML = '<div class="media-error">🎥 Failed to load video</div>';
+                        }
                     }
                 });
+                
+                // Добавляем поддержку загрузки при возобновлении сети
+                if (navigator.onLine === false) {
+                    video.setAttribute('data-pending', 'true');
+                }
             });
             
             const images = postEl.querySelectorAll('img');
@@ -1457,10 +1542,27 @@
                 img.addEventListener('error', () => {
                     console.error('Image failed to load:', img.src);
                     const container = img.closest('.media-container');
-                    if (container) {
+                    if (container && !container.querySelector('.media-error')) {
                         container.innerHTML = '<div class="media-error">📷 Failed to load image</div>';
                     }
                 });
+            });
+        },
+        
+        // ========== НОВЫЙ МЕТОД: Обработка восстановления сети ==========
+        handleNetworkOnline() {
+            console.log('Network is online, retrying failed videos');
+            document.querySelectorAll('video[data-pending="true"]').forEach(video => {
+                video.removeAttribute('data-pending');
+                video.load();
+                video.play().catch(() => {});
+            });
+            
+            // Пробуем перезагрузить неудачные медиа
+            State.failedMedia.forEach((_, messageId) => {
+                if (State.mediaRetryCount.get(messageId) || 0 < CONFIG.MEDIA_MAX_RETRIES) {
+                    MediaManager.loadMedia(messageId, true);
+                }
             });
         },
         
@@ -1542,7 +1644,6 @@
                 </div>
             `;
             
-            // ========== ИСПРАВЛЕНИЕ: Добавляем обработчики после рендера ==========
             setTimeout(() => this.attachMediaHandlers(postEl), 0);
             
             return postEl;
@@ -1640,7 +1741,6 @@
                     postEl.dataset.mediaType = data.media_type || '';
                     changed = true;
                     
-                    // ========== ИСПРАВЛЕНИЕ: Добавляем обработчики для нового медиа ==========
                     setTimeout(() => this.attachMediaHandlers(postEl), 0);
                 } else {
                     const postContent = postEl.querySelector('.post-content');
@@ -1725,6 +1825,13 @@
                 State.mediaStatusStore.delete(messageId);
                 State.mediaReadyQueue.delete(messageId);
                 State.fullMessageCache.delete(messageId);
+                State.failedMedia.delete(messageId);
+                
+                // Удаляем из очереди загрузок
+                const queueIndex = State.loadQueue.indexOf(Number(messageId));
+                if (queueIndex > -1) {
+                    State.loadQueue.splice(queueIndex, 1);
+                }
             }, 300);
             
             return true;
@@ -1854,6 +1961,7 @@
                 this.observer = null;
             }
             VideoManager.stopAllVideos();
+            VideoManager.abortAllLoads();
             API.clearMediaCache();
         }
     };
@@ -1873,14 +1981,14 @@
             
             if (isVideo) {
                 const videoId = `lightbox-video-${Date.now()}`;
-                content.innerHTML = `<video id="${videoId}" src="${fullUrl}" controls autoplay playsinline></video>`;
+                content.innerHTML = `<video id="${videoId}" src="${fullUrl}" controls autoplay playsinline preload="auto"></video>`;
                 this.activeVideo = content.querySelector('video');
                 
-                // Добавляем обработчики через JS
                 if (this.activeVideo) {
                     this.activeVideo.addEventListener('play', () => VideoManager.handleVideoPlay(this.activeVideo));
                     this.activeVideo.addEventListener('pause', () => VideoManager.handleVideoPause(this.activeVideo));
-                    this.activeVideo.addEventListener('error', () => {
+                    this.activeVideo.addEventListener('error', (e) => {
+                        console.error('Lightbox video failed:', e);
                         content.innerHTML = '<div class="media-error">Failed to load video</div>';
                     });
                 }
@@ -1933,6 +2041,9 @@
                 State.offset = 0;
                 State.hasMore = true;
                 API.clearMediaCache();
+                State.failedMedia.clear();
+                State.loadQueue = [];
+                State.activeLoads = 0;
             }
             
             if (!State.hasMore) {
@@ -2356,6 +2467,12 @@
             State.mediaStatusStore.delete(data.message_id);
             State.mediaReadyQueue.delete(data.message_id);
             State.fullMessageCache.delete(data.message_id);
+            State.failedMedia.delete(data.message_id);
+            
+            const queueIndex = State.loadQueue.indexOf(Number(data.message_id));
+            if (queueIndex > -1) {
+                State.loadQueue.splice(queueIndex, 1);
+            }
         },
         
         processFullMessage(fullMessage, type = 'new') {
@@ -2545,6 +2662,16 @@
         
         document.getElementById('lightbox').addEventListener('click', (e) => {
             if (e.target === document.getElementById('lightbox')) Lightbox.close();
+        });
+        
+        // ========== НОВОЕ: Обработка восстановления сети ==========
+        window.addEventListener('online', () => {
+            console.log('Network is online');
+            UI.handleNetworkOnline();
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('Network is offline');
         });
         
         document.addEventListener('visibilitychange', () => {
