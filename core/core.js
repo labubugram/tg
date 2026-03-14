@@ -1033,30 +1033,114 @@
             
             if (post.media_url) return;
             if (State.mediaErrorCache.has(messageId)) return;
-
+            
+            // Проверяем статус из хранилища
             const statusInfo = State.mediaStatusStore.get(messageId);
             if (statusInfo) {
                 this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress);
                 
-                if (statusInfo.status === 'processing' || statusInfo.status === 'uploading' || statusInfo.status === 'downloading') {
+                // Если статус 'processing' или 'uploading', планируем повторную проверку
+                if (statusInfo.status === 'processing' || statusInfo.status === 'uploading') {
                     safeSetTimeout(() => {
                         this.loadMedia(messageId);
                     }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
                     return;
                 }
-
-                if (statusInfo.status === 'ready' && statusInfo.mediaId) {
-                    this.fetchMediaByMediaId(statusInfo.mediaId, messageId);
-                    return;
+            }
+            
+            if (isRetry) {
+                const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                if (postEl) {
+                    const pendingEl = postEl.querySelector('.media-pending, .media-loading, .media-processing');
+                    if (!pendingEl) {
+                        const unavailableEl = postEl.querySelector('.media-unavailable');
+                        if (unavailableEl) {
+                            unavailableEl.outerHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
+                        }
+                    }
                 }
             }
-
-            if (statusInfo && statusInfo.mediaId) {
-                this.fetchMediaByMediaId(statusInfo.mediaId, messageId);
-                return;
-            }
-
-            this.fetchMediaByMessageId(messageId, isRetry);
+            
+            State.mediaLoading.add(messageId);
+            
+            API.fetchMediaOnce(messageId).then(mediaInfo => {
+                State.mediaLoading.delete(messageId);
+                
+                if (mediaInfo && mediaInfo.url) {
+                    post.media_url = mediaInfo.url;
+                    post.media_type = mediaInfo.file_type || post.media_type;
+                    UI.updatePost(messageId, {
+                        media_url: mediaInfo.url,
+                        media_type: post.media_type
+                    });
+                    State.mediaRetryCount.delete(messageId);
+                    State.mediaStatusStore.delete(messageId);
+                    return;
+                }
+                
+                if (mediaInfo && mediaInfo.error === 'not_found') {
+                    // Проверяем статус через API
+                    API.fetchMediaStatus(messageId).then(statusInfo => {
+                        if (statusInfo && statusInfo.exists) {
+                            if (statusInfo.status) {
+                                this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress || 0);
+                                
+                                // Если не ready, планируем повторную проверку
+                                if (statusInfo.status !== 'ready') {
+                                    State.mediaStatusStore.set(messageId, {
+                                        status: statusInfo.status,
+                                        progress: statusInfo.progress || 0,
+                                        lastUpdate: Date.now()
+                                    });
+                                    
+                                    safeSetTimeout(() => {
+                                        this.loadMedia(messageId);
+                                    }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
+                                }
+                            }
+                        } else {
+                            // Статус не найден - пробуем повторить
+                            const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                            State.mediaRetryCount.set(messageId, currentRetries + 1);
+                            
+                            const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                            if (postEl) {
+                                const container = postEl.querySelector('.media-loading, .media-pending');
+                                if (!container) {
+                                    const postContent = postEl.querySelector('.post-content');
+                                    if (postContent && !postContent.querySelector('.media-loading, .media-pending')) {
+                                        postContent.insertAdjacentHTML('beforeend', '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>');
+                                    }
+                                }
+                            }
+                            
+                            this.retryMedia(messageId);
+                        }
+                    });
+                    return;
+                }
+                
+                const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                State.mediaRetryCount.set(messageId, currentRetries + 1);
+                
+                if (currentRetries < CONFIG.MEDIA_MAX_RETRIES - 1) {
+                    this.retryMedia(messageId);
+                } else {
+                    UI.updatePostMediaUnavailable(messageId, 'error');
+                }
+                
+            }).catch(() => {
+                State.mediaLoading.delete(messageId);
+                
+                const currentRetries = State.mediaRetryCount.get(messageId) || 0;
+                State.mediaRetryCount.set(messageId, currentRetries + 1);
+                
+                if (currentRetries < CONFIG.MEDIA_MAX_RETRIES - 1) {
+                    this.retryMedia(messageId);
+                } else {
+                    UI.updatePostMediaUnavailable(messageId, 'error');
+                }
+            });
         },
         
         handleMediaReady(messageId, mediaUrl, mediaType) {
