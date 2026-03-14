@@ -27,9 +27,11 @@
         CLEANUP_INTERVAL: 60000,
         MEDIA_MAX_RETRIES: 5,
         MEDIA_RETRY_DELAY: 2000,
-        // Новая конфигурация для поддержки статусов медиа
+        // ========== НОВАЯ КОНФИГУРАЦИЯ ДЛЯ ПОДДЕРЖКИ СТАТУСОВ МЕДИА ==========
         SUPPORTS_MEDIA_STATUS: true,
-        MEDIA_STATUS_POLL_INTERVAL: 5000
+        MEDIA_STATUS_POLL_INTERVAL: 5000,
+        MEDIA_PENDING_TIMEOUT: 300000, // 5 минут
+        MEDIA_FAILED_TIMEOUT: 3600000 // 1 час для failed статусов
     };
 
     const State = {
@@ -48,8 +50,8 @@
         mediaPending: new Map(),
         mediaRetryCount: new Map(),
         mediaRetryTimeouts: new Map(),
-        // Новое: хранилище статусов медиа
-        mediaStatusStore: new Map(), // media_id -> {status, progress, lastUpdate}
+        // ========== НОВОЕ: хранилище статусов медиа ==========
+        mediaStatusStore: new Map(), // media_id -> {status, progress, lastUpdate, messageId}
         scrollTimeout: null,
         recentMessages: new Map(),
         lastDocumentHeight: 0,
@@ -72,7 +74,7 @@
         batchProcessed: new Set(),
         pendingEdits: new Set(),
         pendingNews: new Set(),
-        // Новое: поддерживаемые версии протокола
+        // ========== НОВОЕ: поддерживаемые версии протокола ==========
         supportedVersions: ['2.0', '3.0'],
         serverVersion: '3.0'
     };
@@ -134,9 +136,14 @@
                 keysToDelete.forEach(key => State.mediaCache.delete(key));
             }
             
-            // Очистка старых статусов медиа
+            // ========== НОВОЕ: Очистка старых статусов медиа ==========
             for (const [mediaId, data] of State.mediaStatusStore.entries()) {
-                if (now - data.lastUpdate > 300000) { // 5 минут
+                // Удаляем статусы старше 5 минут для processing/uploading
+                if (data.status !== 'ready' && now - data.lastUpdate > 300000) {
+                    State.mediaStatusStore.delete(mediaId);
+                }
+                // Удаляем failed статусы через час
+                if (data.status === 'failed' && now - data.lastUpdate > CONFIG.MEDIA_FAILED_TIMEOUT) {
                     State.mediaStatusStore.delete(mediaId);
                 }
             }
@@ -673,7 +680,7 @@
             return null;
         },
         
-        // НОВЫЙ: Получение статуса медиа
+        // ========== НОВЫЙ: Получение статуса медиа ==========
         async fetchMediaStatus(messageId) {
             if (!Security.validateMessageId(messageId)) return null;
             
@@ -837,7 +844,7 @@
     };
 
     // ============================================
-    // УЛУЧШЕННЫЙ MediaManager с поддержкой статусов
+    // ========== УЛУЧШЕННЫЙ MediaManager с поддержкой статусов ==========
     // ============================================
     
     const MediaManager = {
@@ -857,7 +864,7 @@
             return postEl.querySelector('.media-container');
         },
         
-        // НОВЫЙ: Обновление UI на основе статуса
+        // ========== НОВЫЙ: Обновление UI на основе статуса ==========
         updateMediaStatus(messageId, status, progress) {
             const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (!postEl) return false;
@@ -1034,7 +1041,7 @@
             if (post.media_url) return;
             if (State.mediaErrorCache.has(messageId)) return;
             
-            // Проверяем статус из хранилища
+            // ========== НОВОЕ: Проверяем статус из хранилища ==========
             const statusInfo = State.mediaStatusStore.get(messageId);
             if (statusInfo) {
                 this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress);
@@ -1079,20 +1086,21 @@
                 }
                 
                 if (mediaInfo && mediaInfo.error === 'not_found') {
-                    // Проверяем статус через API
+                    // ========== НОВОЕ: Проверяем статус через API ==========
                     API.fetchMediaStatus(messageId).then(statusInfo => {
                         if (statusInfo && statusInfo.exists) {
                             if (statusInfo.status) {
                                 this.updateMediaStatus(messageId, statusInfo.status, statusInfo.progress || 0);
                                 
+                                // Сохраняем статус в хранилище
+                                State.mediaStatusStore.set(messageId, {
+                                    status: statusInfo.status,
+                                    progress: statusInfo.progress || 0,
+                                    lastUpdate: Date.now()
+                                });
+                                
                                 // Если не ready, планируем повторную проверку
                                 if (statusInfo.status !== 'ready') {
-                                    State.mediaStatusStore.set(messageId, {
-                                        status: statusInfo.status,
-                                        progress: statusInfo.progress || 0,
-                                        lastUpdate: Date.now()
-                                    });
-                                    
                                     safeSetTimeout(() => {
                                         this.loadMedia(messageId);
                                     }, CONFIG.MEDIA_STATUS_POLL_INTERVAL);
@@ -1171,7 +1179,7 @@
             }
         },
         
-        // НОВЫЙ: Обработка статуса медиа
+        // ========== НОВЫЙ: Обработка статуса медиа ==========
         handleMediaStatus(messageId, status, progress, mediaId) {
             const post = State.posts.get(messageId);
             if (!post || !post.has_media) return;
@@ -1440,7 +1448,7 @@
             if (post.media_url) {
                 mediaHTML = this.renderMedia(post.media_url, post.media_type);
             } else if (post.has_media) {
-                // Проверяем статус из хранилища
+                // ========== НОВОЕ: Проверяем статус из хранилища ==========
                 const statusInfo = State.mediaStatusStore.get(post.message_id);
                 if (statusInfo) {
                     switch(statusInfo.status) {
@@ -1930,7 +1938,7 @@
     }
 
     // ============================================
-    // ИСПРАВЛЕННЫЙ WebSocketManager с поддержкой v3.0
+    // ========== ИСПРАВЛЕННЫЙ WebSocketManager с поддержкой v3.0 ==========
     // ============================================
     
     const WebSocketManager = {
@@ -2029,7 +2037,7 @@
             }
         },
         
-        // ОСНОВНОЙ ОБРАБОТЧИК - исправлен для поддержки v3.0
+        // ========== ОСНОВНОЙ ОБРАБОТЧИК - исправлен для поддержки v3.0 ==========
         handleMessage(data) {
             // Обработка welcome сообщения
             if (data.type === 'welcome') {
@@ -2103,13 +2111,13 @@
                 case 'media_ready':
                     this.handleMediaReady(data);
                     break;
-                case 'media_status': // НОВЫЙ тип
+                case 'media_status': // ========== НОВЫЙ тип ==========
                     this.handleMediaStatus(data);
                     break;
             }
         },
         
-        // НОВЫЙ: Обработка статусов медиа
+        // ========== НОВЫЙ: Обработка статусов медиа ==========
         handleMediaStatus(data) {
             console.log(`Media status: msg=${data.message_id}, status=${data.status}, progress=${data.progress}%`);
             MediaManager.handleMediaStatus(
@@ -2129,7 +2137,7 @@
             const news = [];
             const deletes = [];
             const mediaReadies = [];
-            const mediaStatuses = []; // НОВЫЙ
+            const mediaStatuses = []; // ========== НОВЫЙ ==========
             
             batch.events.forEach(event => {
                 if (event.channel_id !== parseInt(CONFIG.CHANNEL_ID)) return;
@@ -2155,7 +2163,7 @@
                     case 'media_ready':
                         mediaReadies.push(event);
                         break;
-                    case 'media_status': // НОВЫЙ
+                    case 'media_status': // ========== НОВЫЙ ==========
                         mediaStatuses.push(event);
                         break;
                 }
@@ -2182,7 +2190,7 @@
             // Обрабатываем media_ready
             mediaReadies.forEach(event => this.handleMediaReady(event));
             
-            // Обрабатываем media_status (НОВЫЙ)
+            // ========== НОВОЕ: Обрабатываем media_status ==========
             mediaStatuses.forEach(event => this.handleMediaStatus(event));
         },
         
