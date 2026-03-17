@@ -669,34 +669,31 @@
         async fetchMediaOnce(messageId) {
             if (!Security.validateMessageId(messageId)) return null;
             if (State.mediaCache.has(messageId)) return State.mediaCache.get(messageId);
-            
-            try {
-                const timestamp = Date.now();
-                const url = `${CONFIG.API_BASE}/api/media/by-message/${messageId}?channel_id=${CONFIG.CHANNEL_ID}&_t=${timestamp}`;
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    if (response.status === 404) {
-                        return { error: 'not_found', status: 404, retry: true };
-                    }
-                    throw new Error(`HTTP ${response.status}`);
-                }
-                
-                const data = await response.json();
-                if (data && data.url) {
-                    State.mediaCache.set(messageId, data);
-                    
-                    if (State.mediaCache.size > CONFIG.MAX_MEDIA_CACHE_SIZE * 1.2) {
-                        CacheManager.cleanup();
-                    }
-                    
-                    return data;
-                }
-            } catch (err) {
-                console.error(`Error fetching media for ${messageId}:`, err);
-                return { error: err.message, retry: true };
+
+            // ← НОВАЯ ЗАЩИТА: не запрашиваем пока медиа ещё грузится
+            const post = State.posts.get(messageId);
+            if (post && post.media_pending === true) {
+                return null;   // ждём media_ready
             }
-            return null;
+
+            try {
+                const url = `${CONFIG.API_BASE}/api/media/by-message/${messageId}?channel_id=${CONFIG.CHANNEL_ID}&_t=${Date.now()}`;
+                const response = await fetch(url);
+
+                if (response.status === 404) {
+                    State.mediaErrorCache.add(messageId);
+                    return null;
+                }
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+                const media = await response.json();
+                State.mediaCache.set(messageId, media);
+                return media;
+            } catch (err) {
+                console.error(`Failed to load media for message ${messageId}`);
+                State.mediaErrorCache.add(messageId);
+                return null;
+            }
         },
         
         async fetchMediaStatus(messageId) {
@@ -2451,8 +2448,27 @@
         },
         
         handleMediaReady(data) {
-            MediaManager.handleMediaReady(data.message_id, data.media_url, data.media_type);
-            MessageAPI.invalidateMessage(data.message_id);
+            const messageId = data.message_id;
+            const mediaUrl = data.media_url;
+
+            // Обновляем данные поста
+            const post = State.posts.get(messageId);
+            if (post) {
+                post.media_url = mediaUrl;
+                post.media_pending = false;
+            }
+
+            // Принудительно обновляем картинку в уже существующем посте
+            const img = document.querySelector(`.post[data-message-id="${messageId}"] img, .post[data-message-id="${messageId}"] video`);
+            if (img) {
+                img.src = mediaUrl;
+                img.style.opacity = '1';
+            } else {
+                // если пост ещё не отрисован — обновляем через обычный метод
+                if (post) UI.updatePost(messageId, post);
+            }
+
+            State.mediaErrorCache.delete(messageId);
         },
         
         handleDeleteMessage(data) {
