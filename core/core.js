@@ -2451,61 +2451,23 @@
             const messageId = data.message_id;
             const mediaUrl = data.media_url;
 
-            console.log(`Media ready for ${messageId} → ${mediaUrl}`);
-
-            // Обновляем данные в состоянии
             const post = State.posts.get(messageId);
             if (post) {
                 post.media_url = mediaUrl;
                 post.media_pending = false;
-                post.has_media = true;
             }
 
-            // Находим существующий <video> или <img>
-            const mediaElem = document.querySelector(
-                `.post[data-message-id="${messageId}"] video, .post[data-message-id="${messageId}"] img`
-            );
-
+            // Принудительное обновление src + перезагрузка
+            const mediaElem = document.querySelector(`.post[data-message-id="${messageId}"] video, .post[data-message-id="${messageId}"] img`);
             if (mediaElem) {
-                // Важно для <video>: сначала полностью сбрасываем src
-                mediaElem.pause();                  // останавливаем, если играло
-                mediaElem.src = '';                 // очищаем старый (браузер кэширует неудачу)
-                mediaElem.load();                   // заставляем перезагрузить
-
-                // Добавляем timestamp, чтобы избежать кэша
-                const newSrc = mediaUrl + (mediaUrl.includes('?') ? '&' : '?') + '_t=' + Date.now();
-
-                // Устанавливаем новый src
-                mediaElem.src = newSrc;
-
-                // Для видео — перезапускаем загрузку явно
-                if (mediaElem.tagName === 'VIDEO') {
-                    mediaElem.load();               // второй load после src
-                    if (mediaElem.autoplay || mediaElem.hasAttribute('autoplay')) {
-                        mediaElem.play().catch(() => {});  // автоплей, если был
-                    }
-                }
-
-                // Показываем (убираем скрытие, если есть)
-                mediaElem.style.opacity = '1';
-                mediaElem.style.display = 'block';
-            } else {
-                // Если элемента ещё нет в DOM — перерисуем пост целиком
-                if (post) {
-                    UI.updatePost(messageId, post);
-                }
+                mediaElem.src = '';                     // сначала сбрасываем (важно для видео!)
+                mediaElem.src = mediaUrl + '?_t=' + Date.now();  // добавляем timestamp
+            } else if (post) {
+                UI.updatePost(messageId, post);
             }
 
-            // На всякий случай — чистим ошибку и кэш неудач
-            State.mediaErrorCache.delete(messageId);
-
-            // Ещё один принудительный reload через 500 мс (для упрямых браузеров)
-            safeSetTimeout(() => {
-                if (mediaElem) {
-                    mediaElem.src = mediaUrl + '?_force_reload=' + Date.now();
-                    mediaElem.load();
-                }
-            }, 500);
+            // На всякий случай — ещё один запрос через 400 мс
+            safeSetTimeout(() => MediaManager.loadMedia(messageId), 400);
         },
         
         handleDeleteMessage(data) {
