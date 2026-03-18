@@ -6,7 +6,7 @@
         CHANNEL_ID: document.querySelector('meta[name="mirror:channel-id"]')?.content,
         CHANNEL_TITLE: document.querySelector('meta[name="mirror:channel-title"]')?.content,
         CHANNEL_USERNAME: document.querySelector('meta[name="mirror:channel-username"]')?.content,
-        CHANNEL_AVATAR: document.querySelector('meta[name="mirror:channel-avatar"]')?.content || '∵',
+        CHANNEL_AVATAR: 'avatar.jpg',
         INITIAL_LIMIT: 20,
         MAX_RECONNECT_ATTEMPTS: 10,
         RECONNECT_BASE_DELAY: 1000,
