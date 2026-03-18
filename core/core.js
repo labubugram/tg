@@ -25,12 +25,12 @@
         MAX_MEDIA_CACHE_SIZE: 50,
         CLEANUP_INTERVAL: 120000,
         MEDIA_MAX_RETRIES: 3,           
-        MEDIA_MAX_PROCESSING_TIME: 60000, // УВЕЛИЧЕНО: 60 секунд для больших видео
+        MEDIA_MAX_PROCESSING_TIME: 60000,
         MEDIA_RETRY_DELAY: 2000,
         MEDIA_POLL_MAX_DELAY: 10000,
         VIDEO_PRELOAD: 'metadata',
         RETRY_ON_NETWORK_ERROR: true,
-        MEDIA_READY_RECHECK_DELAY: 1000 // ИСПОЛЬЗУЕТСЯ: задержка перед загрузкой по WS
+        MEDIA_READY_RECHECK_DELAY: 1000
     };
 
     const State = {
@@ -45,7 +45,6 @@
         wsReconnectAttempts: 0,
         
         mediaCache: new Map(),
-        // ИСПРАВЛЕНИЕ: mediaLoading УДАЛЕН - больше не нужен
         mediaRetryTimeouts: new Map(),
         mediaFailed: new Set(),
         mediaNone: new Set(),
@@ -500,7 +499,14 @@
                     return { status: 'none' };
                 }
                 
-                if (!response.ok) throw new Error();
+                if (!response.ok) {
+                    // ИСПРАВЛЕНИЕ: возвращаем информацию об ошибке
+                    return { 
+                        status: 'error', 
+                        reason: `http_${response.status}`,
+                        retryable: response.status >= 500 || response.status === 429
+                    };
+                }
                 
                 const data = await response.json();
                 
@@ -520,9 +526,15 @@
                     return { status: 'processing', progress: data.progress || 0 };
                 }
                 
-                return null;
-            } catch {
-                return null;
+                return { status: 'unknown' };
+            } catch (e) {
+                // ИСПРАВЛЕНИЕ: сохраняем информацию об ошибке
+                return { 
+                    status: 'error', 
+                    reason: 'network',
+                    retryable: true,
+                    error: e.message
+                };
             }
         },
         
@@ -591,15 +603,15 @@
 
     const MediaManager = {
         async loadMedia(messageId, attempt = 0) {
+            // ИСПРАВЛЕНИЕ: защита от двойных вызовов в микро-окне
+            if (State.inFlightRequests.has(messageId)) {
+                return State.inFlightRequests.get(messageId);
+            }
+            
             // Проверки на финальные состояния
             if (State.mediaCache.has(messageId)) return true;
             if (State.mediaFailed.has(messageId)) return false;
             if (State.mediaNone.has(messageId)) return false;
-            
-            // Дедупликация запросов в полёте
-            if (State.inFlightRequests.has(messageId)) {
-                return State.inFlightRequests.get(messageId);
-            }
             
             // Отслеживаем время начала processing
             if (!State.mediaProcessingStart.has(messageId)) {
@@ -618,7 +630,6 @@
                 return false;
             }
             
-            // ИСПРАВЛЕНИЕ: Флаг для отслеживания запланированного retry
             let hasScheduledRetry = false;
             
             const promise = (async () => {
@@ -640,7 +651,6 @@
                         return false;
                     }
                     else if (media?.status === 'processing') {
-                        // ИСПРАВЛЕНИЕ: Ставим timeout ДО выхода из try
                         const delay = Math.min(
                             CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.3, attempt), 
                             CONFIG.MEDIA_POLL_MAX_DELAY
@@ -656,11 +666,11 @@
                         
                         return false;
                     }
-                    else {
-                        // Другие случаи (ошибки) - ретраим с лимитом попыток
-                        if (attempt >= CONFIG.MEDIA_MAX_RETRIES - 1) {
+                    else if (media?.status === 'error') {
+                        // ИСПРАВЛЕНИЕ: умная обработка ошибок
+                        if (!media.retryable || attempt >= CONFIG.MEDIA_MAX_RETRIES - 1) {
                             State.mediaFailed.add(messageId);
-                            this.showMediaUnavailable(messageId, 'error');
+                            this.showMediaUnavailable(messageId, media.reason || 'error');
                             State.mediaProcessingStart.delete(messageId);
                             return false;
                         }
@@ -680,11 +690,35 @@
                         
                         return false;
                     }
-                } catch {
-                    // Сетевая ошибка - ретраим с лимитом
+                    else {
+                        // Неизвестный статус - считаем ошибкой
+                        if (attempt >= CONFIG.MEDIA_MAX_RETRIES - 1) {
+                            State.mediaFailed.add(messageId);
+                            this.showMediaUnavailable(messageId, 'unknown');
+                            State.mediaProcessingStart.delete(messageId);
+                            return false;
+                        }
+                        
+                        const delay = Math.min(
+                            CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.5, attempt), 
+                            CONFIG.MEDIA_POLL_MAX_DELAY
+                        );
+                        
+                        const timeoutId = safeSetTimeout(() => {
+                            State.mediaRetryTimeouts.delete(messageId);
+                            this.loadMedia(messageId, attempt + 1);
+                        }, delay);
+                        
+                        State.mediaRetryTimeouts.set(messageId, timeoutId);
+                        hasScheduledRetry = true;
+                        
+                        return false;
+                    }
+                } catch (e) {
+                    // Неожиданная ошибка
                     if (attempt >= CONFIG.MEDIA_MAX_RETRIES - 1) {
                         State.mediaFailed.add(messageId);
-                        this.showMediaUnavailable(messageId, 'network');
+                        this.showMediaUnavailable(messageId, 'exception');
                         State.mediaProcessingStart.delete(messageId);
                         return false;
                     }
@@ -704,7 +738,6 @@
                     
                     return false;
                 } finally {
-                    // ИСПРАВЛЕНИЕ: Удаляем inFlight только если нет запланированного retry
                     if (!hasScheduledRetry) {
                         State.inFlightRequests.delete(messageId);
                     }
@@ -723,12 +756,12 @@
         },
         
         forceLoadMedia(messageId) {
-            // ИСПРАВЛЕНИЕ: Разрешаем override failed состояния (для WS media_ready)
-            State.mediaFailed.delete(messageId);
-            
+            // ИСПРАВЛЕНИЕ: полная очистка перед форсированной загрузкой
             this.clearRetryTimeout(messageId);
+            
             State.inFlightRequests.delete(messageId);
             State.mediaProcessingStart.delete(messageId);
+            State.mediaFailed.delete(messageId);
             
             this.loadMedia(messageId, 0);
         },
@@ -760,9 +793,11 @@
         
         loadVisibleMedia: throttle(function() {
             State.visiblePosts.forEach(msgId => {
+                // ИСПРАВЛЕНИЕ: защита от двойных вызовов
                 if (!State.mediaCache.has(msgId) && 
                     !State.mediaFailed.has(msgId) && 
-                    !State.mediaNone.has(msgId)) {
+                    !State.mediaNone.has(msgId) &&
+                    !State.inFlightRequests.has(msgId)) { // дополнительная защита
                     this.loadMedia(msgId);
                 }
             });
@@ -835,7 +870,8 @@
                         State.visiblePosts.add(msgId);
                         if (!State.mediaCache.has(msgId) && 
                             !State.mediaFailed.has(msgId) && 
-                            !State.mediaNone.has(msgId)) {
+                            !State.mediaNone.has(msgId) &&
+                            !State.inFlightRequests.has(msgId)) { // ИСПРАВЛЕНИЕ: защита
                             MediaManager.loadMedia(msgId);
                         } else {
                             MediaManager.restoreMediaIfNeeded(msgId);
@@ -864,6 +900,13 @@
             const posts = document.querySelectorAll('.post');
             if (posts.length > CONFIG.MAX_VISIBLE_POSTS) {
                 Array.from(posts).slice(0, posts.length - CONFIG.MAX_VISIBLE_POSTS).forEach(el => {
+                    const msgId = Number(el.dataset.messageId);
+                    
+                    // ИСПРАВЛЕНИЕ: очистка состояния при удалении поста
+                    State.mediaProcessingStart.delete(msgId);
+                    State.inFlightRequests.delete(msgId);
+                    State.mediaRetryTimeouts.delete(msgId);
+                    
                     if (this.observer) this.observer.unobserve(el);
                     const video = el.querySelector('video');
                     if (video) VideoManager.pauseVideo(video);
@@ -1214,7 +1257,6 @@
                         else if (event.type === 'edit') this.handleEditMessage(event);
                         else if (event.type === 'delete') this.handleDeleteMessage(event);
                         else if (event.type === 'media_ready') {
-                            // ИСПРАВЛЕНИЕ: Используем задержку для CDN
                             safeSetTimeout(() => {
                                 MediaManager.forceLoadMedia(event.message_id);
                             }, CONFIG.MEDIA_READY_RECHECK_DELAY);
@@ -1232,7 +1274,6 @@
             else if (data.type === 'edit') this.handleEditMessage(data);
             else if (data.type === 'delete') this.handleDeleteMessage(data);
             else if (data.type === 'media_ready') {
-                // ИСПРАВЛЕНИЕ: Используем задержку для CDN
                 safeSetTimeout(() => {
                     MediaManager.forceLoadMedia(data.message_id);
                 }, CONFIG.MEDIA_READY_RECHECK_DELAY);
@@ -1372,7 +1413,11 @@
         
         window.addEventListener('online', () => MediaManager.loadVisibleMedia());
         document.addEventListener('visibilitychange', () => {
-            if (!document.hidden && State.newPosts.length) WebSocketManager.flushNewPosts();
+            if (!document.hidden) {
+                // ИСПРАВЛЕНИЕ: при возвращении на вкладку - проверяем видимые посты
+                MediaManager.loadVisibleMedia();
+                if (State.newPosts.length) WebSocketManager.flushNewPosts();
+            }
         });
         window.addEventListener('beforeunload', cleanupResources);
     }
