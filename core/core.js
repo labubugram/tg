@@ -769,8 +769,18 @@
     // MediaManager - УПРОЩЕННЫЙ
     // ============================================
     
+    // ============================================
+    // MediaManager - ИСПРАВЛЕННЫЙ
+    // ============================================
+
     const MediaManager = {
+        // Храним информацию о неудачных попытках
+        failedMedia: new Map(), // messageId -> { attempts, lastAttempt }
+        
         async loadMedia(messageId, attempt = 0) {
+            // Максимальное количество попыток
+            const MAX_ATTEMPTS = 5;
+            
             // Уже загружено
             if (State.mediaCache.has(messageId)) {
                 this.updatePostMedia(messageId, State.mediaCache.get(messageId));
@@ -782,9 +792,19 @@
                 return false;
             }
             
-            // Слишком много попыток
-            if (attempt >= CONFIG.MEDIA_MAX_RETRIES) {
-                console.log(`Media ${messageId} failed after ${attempt} attempts`);
+            // Проверяем не было ли слишком много попыток
+            const failedInfo = this.failedMedia.get(messageId);
+            if (failedInfo && failedInfo.attempts >= MAX_ATTEMPTS) {
+                console.log(`Media ${messageId} not found after ${MAX_ATTEMPTS} attempts, giving up`);
+                
+                // Показываем заглушку "медиа не найдено"
+                const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                if (postEl) {
+                    const loader = postEl.querySelector('.media-loading');
+                    if (loader) {
+                        loader.innerHTML = '<div class="media-unavailable">📷 Media not available</div>';
+                    }
+                }
                 return false;
             }
             
@@ -798,6 +818,9 @@
                     State.mediaCache.set(messageId, media.url);
                     this.updatePostMedia(messageId, media.url);
                     
+                    // Очищаем информацию о неудачах
+                    this.failedMedia.delete(messageId);
+                    
                     // Очищаем retry timeout если был
                     if (State.mediaRetryTimeouts.has(messageId)) {
                         clearTimeout(State.mediaRetryTimeouts.get(messageId));
@@ -806,20 +829,47 @@
                     
                     return true;
                 } else {
-                    // Не готово - планируем повтор
+                    // Медиа не готово или не найдено
                     State.mediaLoading.delete(messageId);
                     
-                    const delay = Math.min(
-                        CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.5, attempt),
-                        CONFIG.MEDIA_POLL_MAX_DELAY
-                    );
+                    // Обновляем счетчик неудач
+                    const attempts = (failedInfo?.attempts || 0) + 1;
+                    this.failedMedia.set(messageId, {
+                        attempts: attempts,
+                        lastAttempt: Date.now()
+                    });
                     
-                    const timeoutId = safeSetTimeout(() => {
-                        State.mediaRetryTimeouts.delete(messageId);
-                        this.loadMedia(messageId, attempt + 1);
-                    }, delay);
+                    // Если это 404 или media === null, увеличиваем базовую задержку
+                    const isNotFound = media === null;
+                    const baseDelay = isNotFound ? 10000 : CONFIG.MEDIA_RETRY_DELAY; // для 404 ждем дольше
                     
-                    State.mediaRetryTimeouts.set(messageId, timeoutId);
+                    if (attempts < MAX_ATTEMPTS) {
+                        const delay = Math.min(
+                            baseDelay * Math.pow(1.5, attempts - 1),
+                            CONFIG.MEDIA_POLL_MAX_DELAY
+                        );
+                        
+                        console.log(`Media ${messageId} not ready (attempt ${attempts}/${MAX_ATTEMPTS}), retry in ${Math.round(delay)}ms`);
+                        
+                        const timeoutId = safeSetTimeout(() => {
+                            State.mediaRetryTimeouts.delete(messageId);
+                            this.loadMedia(messageId, attempts);
+                        }, delay);
+                        
+                        State.mediaRetryTimeouts.set(messageId, timeoutId);
+                    } else {
+                        console.log(`Media ${messageId} not found after ${MAX_ATTEMPTS} attempts, stopping retries`);
+                        
+                        // Показываем заглушку
+                        const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
+                        if (postEl) {
+                            const loader = postEl.querySelector('.media-loading');
+                            if (loader) {
+                                loader.innerHTML = '<div class="media-unavailable">📷 Media not available</div>';
+                            }
+                        }
+                    }
+                    
                     return false;
                 }
                 
@@ -827,24 +877,37 @@
                 console.error(`Error loading media ${messageId}:`, err);
                 State.mediaLoading.delete(messageId);
                 
-                // Планируем повтор при ошибке
-                const delay = Math.min(
-                    CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.5, attempt),
-                    CONFIG.MEDIA_POLL_MAX_DELAY
-                );
+                // Обновляем счетчик неудач
+                const attempts = (failedInfo?.attempts || 0) + 1;
+                this.failedMedia.set(messageId, {
+                    attempts: attempts,
+                    lastAttempt: Date.now()
+                });
                 
-                const timeoutId = safeSetTimeout(() => {
-                    State.mediaRetryTimeouts.delete(messageId);
-                    this.loadMedia(messageId, attempt + 1);
-                }, delay);
+                if (attempts < MAX_ATTEMPTS) {
+                    // При ошибках сети пробуем чаще
+                    const delay = Math.min(
+                        CONFIG.MEDIA_RETRY_DELAY * Math.pow(1.3, attempts - 1),
+                        CONFIG.MEDIA_POLL_MAX_DELAY
+                    );
+                    
+                    const timeoutId = safeSetTimeout(() => {
+                        State.mediaRetryTimeouts.delete(messageId);
+                        this.loadMedia(messageId, attempts);
+                    }, delay);
+                    
+                    State.mediaRetryTimeouts.set(messageId, timeoutId);
+                }
                 
-                State.mediaRetryTimeouts.set(messageId, timeoutId);
                 return false;
             }
         },
         
         // Принудительная перезагрузка (для media_ready)
         forceLoadMedia(messageId) {
+            // Очищаем информацию о неудачах
+            this.failedMedia.delete(messageId);
+            
             // Очищаем существующие таймауты
             if (State.mediaRetryTimeouts.has(messageId)) {
                 clearTimeout(State.mediaRetryTimeouts.get(messageId));
@@ -879,6 +942,12 @@
         // Загрузить медиа для видимых постов
         loadVisibleMedia() {
             State.visiblePosts.forEach(messageId => {
+                // Проверяем, не сдались ли мы уже
+                const failedInfo = this.failedMedia.get(messageId);
+                if (failedInfo && failedInfo.attempts >= 5) {
+                    return; // Пропускаем, если слишком много попыток
+                }
+                
                 if (!State.mediaCache.has(messageId)) {
                     this.loadMedia(messageId);
                 }
@@ -951,8 +1020,25 @@
                 }
             }
             return false;
+        },
+        
+        // Очистка старых записей о неудачах
+        cleanupFailedMedia() {
+            const now = Date.now();
+            const ONE_HOUR = 3600000;
+            
+            for (const [messageId, info] of this.failedMedia.entries()) {
+                if (now - info.lastAttempt > ONE_HOUR) {
+                    this.failedMedia.delete(messageId);
+                }
+            }
         }
     };
+
+    // Добавляем периодическую очистку
+    safeSetInterval(() => {
+        MediaManager.cleanupFailedMedia();
+    }, 3600000); // Раз в час
 
     // ============================================
     // UI
