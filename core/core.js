@@ -121,13 +121,14 @@
 
     const Security = {
         escapeHtml(unsafe) {
-            return unsafe.replace(/[&<>"']/g, function(m) {
-                if (m === '&') return '&amp;';
-                if (m === '<') return '&lt;';
-                if (m === '>') return '&gt;';
-                if (m === '"') return '&quot;';
-                return '&#039;';
-            });
+            if (!unsafe) return '';
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;")
+                .replace(/`/g, "&#96;");
         },
         sanitizeUrl(url) {
             try {
@@ -156,25 +157,227 @@
             if (isYesterday) return `Yesterday at ${time}`;
             return d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long' }) + ` at ${time}`;
         },
+        
         formatViews(views) {
             if (!views) return '0';
             if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
             if (views >= 1000) return `${(views / 1000).toFixed(1)}K`;
             return views.toString();
         },
-        formatText(text) {
+        
+        formatText(text, entities = []) {
             if (!text) return '';
-            return Security.escapeHtml(text)
-                .replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>')
-                .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-                .replace(/__(.*?)__/g, '<u>$1</u>')
-                .replace(/\*(.*?)\*/g, '<i>$1</i>')
-                .replace(/_(.*?)_/g, '<i>$1</i>')
-                .replace(/~~(.*?)~~/g, '<s>$1</s>')
-                .replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler">$1</span>')
-                .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="tg-link">$1</a>')
-                .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="tg-link">$1</a>')
-                .replace(/\n/g, '<br>');
+            
+            const escapeHtml = (unsafe) => {
+                return unsafe
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;');
+            };
+
+            const isEmoji = (char) => {
+                const codePoint = char.codePointAt(0);
+                return (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) || 
+                       (codePoint >= 0x2600 && codePoint <= 0x26FF) ||   
+                       (codePoint >= 0x2700 && codePoint <= 0x27BF) ||   
+                       (codePoint >= 0x1F1E6 && codePoint <= 0x1F1FF) || 
+                       codePoint === 0x200D || 
+                       (codePoint >= 0xE0020 && codePoint <= 0xE007F);   
+            };
+            
+            const emojiSequences = [];
+            let processed = '';
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                if (isEmoji(char)) {
+                    let sequence = '';
+                    while (i < text.length && isEmoji(text[i])) {
+                        sequence += text[i];
+                        i++;
+                    }
+                    i--;
+                    const placeholder = `%%%EMOJI${emojiSequences.length}%%%`;
+                    emojiSequences.push(sequence);
+                    processed += placeholder;
+                } else {
+                    processed += char;
+                }
+            }
+
+            const codeBlocks = [];
+            let processedWithCode = processed;
+
+            processedWithCode = processedWithCode.replace(/```([\s\S]*?)```/g, (match, code) => {
+                const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
+                codeBlocks.push({
+                    type: 'pre',
+                    content: code
+                });
+                return placeholder;
+            });
+
+            processedWithCode = processedWithCode.replace(/`([^`]+)`/g, (match, code) => {
+                const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
+                codeBlocks.push({
+                    type: 'inline',
+                    content: code
+                });
+                return placeholder;
+            });
+
+            let escaped = escapeHtml(processedWithCode);
+
+            escaped = escaped.replace(/%%%EMOJI(\d+)%%%/g, (match, index) => {
+                return emojiSequences[parseInt(index)] || match;
+            });
+
+            escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
+                url = url.replace(/[<>"']/g, '');
+                const safeUrl = Security.sanitizeUrl(url);
+                if (safeUrl === '#') return match;
+                
+                const escapedLinkText = escapeHtml(linkText);
+                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapedLinkText}</a>`;
+            });
+
+            if (entities && entities.length > 0) {
+                const sortedEntities = [...entities].sort((a, b) => b.offset - a.offset);
+                
+                for (const entity of sortedEntities) {
+                    const { offset, length, type } = entity;
+                    if (offset < 0 || offset + length > escaped.length) continue;
+                    
+                    const before = escaped.substring(0, offset);
+                    const content = escaped.substring(offset, offset + length);
+                    const after = escaped.substring(offset + length);
+                    
+                    let wrapped = content;
+                    
+                    switch (type) {
+                        case 'bold':
+                        case 'Bold':
+                            wrapped = `<b>${content}</b>`;
+                            break;
+                        case 'italic':
+                        case 'Italic':
+                            wrapped = `<i>${content}</i>`;
+                            break;
+                        case 'underline':
+                        case 'Underline':
+                            wrapped = `<u>${content}</u>`;
+                            break;
+                        case 'strikethrough':
+                        case 'Strikethrough':
+                            wrapped = `<s>${content}</s>`;
+                            break;
+                        case 'code':
+                        case 'pre':
+                            wrapped = content;
+                            break;
+                        case 'spoiler':
+                        case 'Spoiler':
+                            wrapped = `<span class="tg-spoiler" onclick="this.classList.toggle('revealed')">${content}</span>`;
+                            break;
+                        case 'text_link':
+                            if (entity.url) {
+                                const safeUrl = Security.sanitizeUrl(entity.url);
+                                wrapped = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>`;
+                            }
+                            break;
+                        case 'mention':
+                            wrapped = `<span class="tg-mention" data-mention="${content}">${content}</span>`;
+                            break;
+                        case 'hashtag':
+                            wrapped = `<span class="tg-hashtag" data-hashtag="${content}">${content}</span>`;
+                            break;
+                    }
+                    
+                    escaped = before + wrapped + after;
+                }
+            } else {
+                escaped = escaped.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
+                escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                escaped = escaped.replace(/__(.*?)__/g, '<u>$1</u>');
+                escaped = escaped.replace(/\*(.*?)\*/g, '<i>$1</i>');
+                escaped = escaped.replace(/_(.*?)_/g, '<i>$1</i>');
+                escaped = escaped.replace(/~~(.*?)~~/g, '<s>$1</s>');
+                escaped = escaped.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
+            }
+
+            escaped = escaped.replace(/%%%CODEBLOCK(\d+)%%%/g, (match, index) => {
+                const block = codeBlocks[parseInt(index)];
+                if (!block) return match;
+                
+                const content = escapeHtml(block.content);
+                if (block.type === 'pre') {
+                    return `<pre class="tg-code-block"><code>${content}</code></pre>`;
+                } else {
+                    return `<code class="tg-inline-code">${content}</code>`;
+                }
+            });
+
+            const parts = [];
+            let lastIndex = 0;
+            const linkRegex = /<a[^>]*>.*?<\/a>/g;
+            let match;
+            while ((match = linkRegex.exec(escaped)) !== null) {
+                parts.push(escaped.substring(lastIndex, match.index));
+                parts.push(match[0]);
+                lastIndex = match.index + match[0].length;
+            }
+            parts.push(escaped.substring(lastIndex));
+            
+            escaped = parts.map(part => {
+                if (part.startsWith('<a')) return part;
+                
+                return part.replace(/(https?:\/\/[^\s<"')]+)(?![^<]*>)/g, (url) => {
+                    const safeUrl = Security.sanitizeUrl(url);
+                    if (safeUrl === '#') return url;
+                    
+                    let displayText = url;
+                    if (url.length > 50) {
+                        displayText = url.substring(0, 40) + '…' + url.substring(url.length - 10);
+                    }
+                    
+                    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${displayText}</a>`;
+                });
+            }).join('');
+
+            escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
+            escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
+            escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
+
+            const tagParts = [];
+            lastIndex = 0;
+            const tagRegex = /<[^>]+>/g;
+            while ((match = tagRegex.exec(escaped)) !== null) {
+                tagParts.push({
+                    type: 'text',
+                    content: escaped.substring(lastIndex, match.index)
+                });
+                tagParts.push({
+                    type: 'tag',
+                    content: match[0]
+                });
+                lastIndex = match.index + match[0].length;
+            }
+            tagParts.push({
+                type: 'text',
+                content: escaped.substring(lastIndex)
+            });
+            
+            escaped = tagParts.map(part => {
+                if (part.type === 'tag') return part.content;
+                
+                return part.content
+                    .replace(/(?<!\w)@(\w+)/g, '<span class="tg-mention" data-mention="@$1">@$1</span>')
+                    .replace(/(?<!\w)#(\w+)/g, '<span class="tg-hashtag" data-hashtag="#$1">#$1</span>');
+            }).join('');
+
+            escaped = escaped.replace(/\n/g, '<br>');
+
+            return escaped;
         }
     };
 
@@ -549,12 +752,25 @@
         renderMedia(url, type) {
             if (!url) return '';
             const fullUrl = url.startsWith('http') ? url : `${CONFIG.API_BASE}${url}`;
-            const isVideo = type?.toLowerCase().includes('video') || fullUrl.match(/\.(mp4|webm|mov|gif)$/i);
-            if (isVideo) {
-                const isGif = fullUrl.match(/\.gif$/i) || type?.toLowerCase().includes('gif');
-                return `<div class="media-container"><video src="${fullUrl}" ${isGif ? 'autoplay loop muted' : 'controls'} playsinline preload="${CONFIG.VIDEO_PRELOAD}" style="max-width:100%; max-height:500px;"></video></div>`;
+            
+            let isVideo = false;
+            if (type) {
+                const typeStr = String(type).toLowerCase();
+                isVideo = typeStr.includes('video') || typeStr.includes('document') || typeStr.includes('animation') || typeStr === 'messagemediadocument' || typeStr.includes('gif') || typeStr.includes('mp4') || typeStr.includes('webm') || typeStr.includes('mov');
+            } else if (fullUrl.match(/\.(mp4|webm|mov|gif)$/i)) {
+                isVideo = true;
             }
-            return `<div class="media-container"><img src="${fullUrl}" alt="Media" loading="lazy" decoding="async"></div>`;
+            
+            if (isVideo) {
+                const isGifLike = fullUrl.match(/\.gif$/i) || (type && String(type).toLowerCase().includes('gif'));
+                if (isGifLike) {
+                    return `<div class="media-container"><video src="${fullUrl}" autoplay loop muted playsinline preload="${CONFIG.VIDEO_PRELOAD}" style="max-width:100%; max-height:500px; background:#282c3000;"></video></div>`;
+                } else {
+                    return `<div class="media-container"><video src="${fullUrl}" controls preload="${CONFIG.VIDEO_PRELOAD}" playsinline style="max-width:100%; max-height:500px; background:#282c3000;"></video></div>`;
+                }
+            } else {
+                return `<div class="media-container"><img src="${fullUrl}" alt="Media" loading="lazy" decoding="async"></div>`;
+            }
         },
         attachMediaHandlers(postEl) {
             postEl.querySelectorAll('video').forEach(video => {
@@ -574,6 +790,11 @@
             postEl.className = 'post';
             postEl.dataset.messageId = post.message_id;
             postEl.dataset.mediaUrl = post.media_url || '';
+            postEl.dataset.mediaType = post.media_type || '';
+            
+            const date = Formatters.formatDate(post.date);
+            const views = Formatters.formatViews(post.views);
+            const text = Formatters.formatText(post.text);
             
             let mediaHTML = '';
             if (post.media_url) {
@@ -585,16 +806,16 @@
             postEl.innerHTML = `
                 <div class="post-content">
                     <div class="post-header">
-                        <div class="post-avatar"><img src="/tg/core/avatar.svg" style="width:36px; height:36px;" alt="Channel avatar" loading="lazy"></div>
+                        <div class="post-avatar"><img src="/tg/core/avatar.svg" style="width:36px; height:36px; object-fit:cover;" alt="Channel avatar" loading="lazy"></div>
                         <div class="post-author-info">
                             <div class="post-author-name">${CONFIG.CHANNEL_TITLE} <span class="post-username">@${CONFIG.CHANNEL_USERNAME}</span></div>
-                            <div class="post-date">${Formatters.formatDate(post.date)}${post.is_edited ? ' <span class="edited-mark">(edited)</span>' : ''}</div>
+                            <div class="post-date">${date}${post.is_edited ? ' <span class="edited-mark">(edited)</span>' : ''}</div>
                         </div>
                     </div>
-                    <div class="post-text">${Formatters.formatText(post.text) || '<i></i>'}</div>
+                    <div class="post-text">${text || '<i></i>'}</div>
                     ${mediaHTML}
                 </div>
-                <div class="post-footer"><span class="views-count">👁 ${Formatters.formatViews(post.views)}</span></div>
+                <div class="post-footer"><span class="views-count">👁 ${views}</span></div>
             `;
             
             setTimeout(() => this.attachMediaHandlers(postEl), 0);
@@ -681,8 +902,12 @@
             const lightbox = document.getElementById('lightbox');
             const content = document.getElementById('lightboxContent');
             const fullUrl = url.startsWith('http') ? url : `${CONFIG.API_BASE}${url}`;
-            const isVideo = type === 'video' || url.match(/\.(mp4|webm|mov)$/i);
-            content.innerHTML = isVideo ? `<video src="${fullUrl}" controls autoplay playsinline></video>` : `<img src="${fullUrl}" alt="Media">`;
+            const isVideo = type === 'video' || type === 'Video' || url.match(/\.(mp4|webm|mov)$/i);
+            if (isVideo) {
+                content.innerHTML = `<video src="${fullUrl}" controls autoplay playsinline preload="auto"></video>`;
+            } else {
+                content.innerHTML = `<img src="${fullUrl}" alt="Media">`;
+            }
             lightbox.classList.add('active');
             document.body.style.overflow = 'hidden';
         },
