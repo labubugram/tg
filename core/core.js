@@ -1609,7 +1609,7 @@
                 } else {
                     const retryCount = State.mediaRetryCount.get(post.message_id) || 0;
                     if (retryCount >= CONFIG.MEDIA_MAX_RETRIES) {
-                        mediaHTML = '<div class="media-unavailable">📷 Media unavailable</div>';
+                        mediaHTML = '<div class="media-unavailable">Media unavailable</div>';
                     } else {
                         mediaHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
                     }
@@ -1620,7 +1620,7 @@
                 <div class="post-content">
                     <div class="post-header">
                         <div class="post-avatar">
-                            <img src="/tg/core/avatar.svg" style="width:36px; height:36px; object-fit:cover;" alt="Channel avatar" loading="lazy">
+                            <img src="avatar.jpg" style="width:36px; height:36px; object-fit:cover;" alt="Channel avatar" loading="lazy">
                         </div>
                         <div class="post-author-info">
                             <div class="post-author-name">
