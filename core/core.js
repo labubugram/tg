@@ -305,7 +305,7 @@
                 return placeholder;
             });
 
-            // Экранируем HTML, но сохраняем маркеры форматирования
+            // Экранируем HTML
             let escaped = escapeHtml(processedWithCode);
 
             // Восстановление эмодзи
@@ -313,9 +313,9 @@
                 return emojiSequences[parseInt(index)] || match;
             });
 
-            // ========== ИСПРАВЛЕНИЕ: СНАЧАЛА ОБРАБАТЫВАЕМ ВСЕ ССЫЛКИ, НО СОХРАНЯЕМ ФОРМАТИРОВАНИЕ ==========
+            // ========== ОСНОВНАЯ ЛОГИКА ФОРМАТИРОВАНИЯ ==========
             
-            // Временные хранилища для разных типов ссылок
+            // Хранилище для ссылок
             const linkPlaceholders = [];
             
             // 1. Сначала обрабатываем markdown-ссылки [text](url)
@@ -328,13 +328,13 @@
                 linkPlaceholders.push({
                     type: 'markdown',
                     content: linkText,
-                    url: safeUrl,
-                    fullUrl: url
+                    url: safeUrl
                 });
                 return placeholder;
             });
 
             // 2. Обрабатываем автоматические URL
+            // Разбиваем на части, чтобы не трогать уже обработанные ссылки
             const urlParts = [];
             let lastIndex = 0;
             const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
@@ -342,58 +342,44 @@
             
             while ((match = urlRegex.exec(escaped)) !== null) {
                 if (match.index > lastIndex) {
-                    urlParts.push({
-                        type: 'text',
-                        content: escaped.substring(lastIndex, match.index)
-                    });
+                    urlParts.push(escaped.substring(lastIndex, match.index));
                 }
                 
                 const url = match[0];
                 const safeUrl = Security.sanitizeUrl(url);
                 if (safeUrl === '#') {
-                    urlParts.push({ type: 'text', content: url });
+                    urlParts.push(url);
                 } else {
                     const placeholder = `%%%LINK${linkPlaceholders.length}%%%`;
                     linkPlaceholders.push({
                         type: 'auto',
                         content: url,
-                        url: safeUrl,
-                        fullUrl: url
+                        url: safeUrl
                     });
-                    urlParts.push({ type: 'placeholder', content: placeholder });
+                    urlParts.push(placeholder);
                 }
                 
                 lastIndex = match.index + match[0].length;
             }
             
             if (lastIndex < escaped.length) {
-                urlParts.push({
-                    type: 'text',
-                    content: escaped.substring(lastIndex)
-                });
+                urlParts.push(escaped.substring(lastIndex));
             }
             
-            // Собираем обратно с плейсхолдерами
-            escaped = urlParts.map(part => 
-                part.type === 'placeholder' ? part.content : part.content
-            ).join('');
+            escaped = urlParts.join('');
 
-            // ========== ТЕПЕРЬ ОБРАБАТЫВАЕМ ФОРМАТИРОВАНИЕ ==========
-            
-            // Функция для применения форматирования к тексту
-            const applyFormatting = (text, formatting) => {
-                if (!formatting || formatting.length === 0) return text;
+            // 3. Обрабатываем форматирование (жирный, курсив и т.д.)
+            if (entities && entities.length > 0) {
+                // Используем entities из Telegram API
+                const sortedEntities = [...entities].sort((a, b) => b.offset - a.offset);
                 
-                // Сортируем от конца к началу, чтобы не ломать индексы
-                const sorted = [...formatting].sort((a, b) => b.offset - a.offset);
-                
-                for (const fmt of sorted) {
-                    const { offset, length, type } = fmt;
-                    if (offset < 0 || offset + length > text.length) continue;
+                for (const entity of sortedEntities) {
+                    const { offset, length, type } = entity;
+                    if (offset < 0 || offset + length > escaped.length) continue;
                     
-                    const before = text.substring(0, offset);
-                    const content = text.substring(offset, offset + length);
-                    const after = text.substring(offset + length);
+                    const before = escaped.substring(0, offset);
+                    const content = escaped.substring(offset, offset + length);
+                    const after = escaped.substring(offset + length);
                     
                     let wrapped = content;
                     
@@ -416,11 +402,24 @@
                             break;
                         case 'code':
                         case 'pre':
-                            wrapped = content; // код не форматируем дополнительно
+                            wrapped = content;
                             break;
                         case 'spoiler':
                         case 'Spoiler':
                             wrapped = `<span class="tg-spoiler" onclick="this.classList.toggle('revealed')">${content}</span>`;
+                            break;
+                        case 'text_link':
+                            if (entity.url) {
+                                const safeUrl = Security.sanitizeUrl(entity.url);
+                                // Сохраняем как ссылку с возможным форматированием внутри
+                                const linkPlaceholder = `%%%LINK${linkPlaceholders.length}%%%`;
+                                linkPlaceholders.push({
+                                    type: 'entity',
+                                    content: content,
+                                    url: safeUrl
+                                });
+                                wrapped = linkPlaceholder;
+                            }
                             break;
                         case 'mention':
                             wrapped = `<span class="tg-mention" data-mention="${content}">${content}</span>`;
@@ -428,68 +427,32 @@
                         case 'hashtag':
                             wrapped = `<span class="tg-hashtag" data-hashtag="${content}">${content}</span>`;
                             break;
-                        case 'text_link':
-                            // Ссылки из entities обработаем позже
-                            if (fmt.url) {
-                                const safeUrl = Security.sanitizeUrl(fmt.url);
-                                wrapped = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>`;
-                            }
-                            break;
                     }
                     
-                    text = before + wrapped + after;
-                }
-                
-                return text;
-            };
-
-            // Применяем entities форматирование, если есть
-            if (entities && entities.length > 0) {
-                // Но сначала нужно защитить плейсхолдеры ссылок от форматирования
-                const formattingEntities = entities.filter(e => e.type !== 'text_link');
-                const linkEntities = entities.filter(e => e.type === 'text_link');
-                
-                // Применяем обычное форматирование
-                escaped = applyFormatting(escaped, formattingEntities);
-                
-                // Обрабатываем text_link entities
-                for (const entity of linkEntities) {
-                    const { offset, length, url } = entity;
-                    if (offset < 0 || offset + length > escaped.length) continue;
-                    
-                    const before = escaped.substring(0, offset);
-                    const content = escaped.substring(offset, offset + length);
-                    const after = escaped.substring(offset + length);
-                    
-                    const safeUrl = Security.sanitizeUrl(url);
-                    if (safeUrl !== '#') {
-                        escaped = before + 
-                                 `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>` + 
-                                 after;
-                    }
+                    escaped = before + wrapped + after;
                 }
             } else {
-                // Обработка Markdown-подобного форматирования
-                // ВАЖНО: обрабатываем в порядке, который позволяет вложенность
+                // Markdown-подобное форматирование для случаев без entities
+                // Сначала самые специфичные паттерны
                 let formatted = escaped;
                 
-                // Сначала обрабатываем жирный курсив (самый специфичный)
+                // Жирный курсив
                 formatted = formatted.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
                 
-                // Потом жирный
+                // Жирный
                 formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
                 
-                // Потом подчеркивание
+                // Подчеркивание
                 formatted = formatted.replace(/__(.*?)__/g, '<u>$1</u>');
                 
-                // Потом курсив (оба варианта)
+                // Курсив (оба варианта)
                 formatted = formatted.replace(/\*(.*?)\*/g, '<i>$1</i>');
                 formatted = formatted.replace(/_(.*?)_/g, '<i>$1</i>');
                 
-                // Потом зачеркивание
+                // Зачеркивание
                 formatted = formatted.replace(/~~(.*?)~~/g, '<s>$1</s>');
                 
-                // Потом спойлеры
+                // Спойлер
                 formatted = formatted.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
                 
                 escaped = formatted;
@@ -508,18 +471,13 @@
                 }
             });
 
-            // ========== ВОССТАНОВЛЕНИЕ ССЫЛОК ==========
-            // Теперь восстанавливаем все ссылки, применяя к ним накопленное форматирование
+            // 4. Восстанавливаем все ссылки
             escaped = escaped.replace(/%%%LINK(\d+)%%%/g, (match, index) => {
                 const link = linkPlaceholders[parseInt(index)];
                 if (!link) return match;
                 
-                let content = link.content;
-                
-                // Ссылка уже могла получить форматирование (жирный, курсив и т.д.)
-                // Мы просто оборачиваем её в тег <a>
-                
-                return `<a href="${link.url}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>`;
+                // content уже может содержать HTML-теги форматирования (жирный, курсив и т.д.)
+                return `<a href="${link.url}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${link.content}</a>`;
             });
 
             // Обработка цитат
@@ -530,9 +488,9 @@
             // Обработка упоминаний и хэштегов (только вне тегов)
             const finalParts = [];
             lastIndex = 0;
-            const finalTagRegex = /<[^>]+>/g;
+            const tagRegex = /<[^>]+>/g;
             
-            while ((match = finalTagRegex.exec(escaped)) !== null) {
+            while ((match = tagRegex.exec(escaped)) !== null) {
                 if (match.index > lastIndex) {
                     finalParts.push({
                         type: 'text',
@@ -563,6 +521,12 @@
             // Замена переносов строк на <br>
             escaped = escaped.replace(/\n/g, '<br>');
 
+            // Финальная очистка: убираем маркеры форматирования, которые могли остаться внутри ссылок
+            escaped = escaped.replace(/<a([^>]*)>\*\*(.*?)\*\*<\/a>/g, '<a$1><b>$2</b></a>');
+            escaped = escaped.replace(/<a([^>]*)>\*(.*?)\*<\/a>/g, '<a$1><i>$2</i></a>');
+            escaped = escaped.replace(/<a([^>]*)>__(.*?)__<\/a>/g, '<a$1><u>$2</u></a>');
+            escaped = escaped.replace(/<a([^>]*)>~~(.*?)~~<\/a>/g, '<a$1><s>$2</s></a>');
+            
             return escaped;
         }
     };
