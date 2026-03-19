@@ -642,11 +642,16 @@ body {
 
 /* Links */
 .tg-link {
-    color: var(--accent);
-    text-decoration: none;
-    border-bottom: 1px dashed var(--accent-light);
     word-break: break-all;
-    transition: all var(--transition-duration) ease;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    hyphens: auto;
+    display: inline;
+    max-width: 100%;
+    background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>') no-repeat right center;
+    padding-right: 16px;
+    background-size: 12px;
+    background-position: right 2px;
 }
 
 .tg-link:hover {
