@@ -312,17 +312,23 @@
                 return emojiSequences[parseInt(index)] || match;
             });
 
-            // Обработка markdown-style ссылок [text](url)
+            // ========== ВАЖНО: СНАЧАЛА ОБРАБАТЫВАЕМ MARKDOWN-ССЫЛКИ ==========
             escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
+                // Убираем лишние символы из URL
                 url = url.replace(/[<>"']/g, '');
+                
+                // ВАЖНО: НЕ экранируем URL повторно, только проверяем безопасность
                 const safeUrl = Security.sanitizeUrl(url);
                 if (safeUrl === '#') return match;
                 
+                // Экранируем только текст ссылки, НЕ URL
                 const escapedLinkText = escapeHtml(linkText);
-                return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapedLinkText}</a>`;
+                
+                // Возвращаем чистый HTML без лишних экранирований
+                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapedLinkText}</a>`;
             });
 
-            // Обработка текстовых сущностей
+            // Обработка сущностей форматирования
             if (entities && entities.length > 0) {
                 const sortedEntities = [...entities].sort((a, b) => b.offset - a.offset);
                 
@@ -364,7 +370,8 @@
                         case 'text_link':
                             if (entity.url) {
                                 const safeUrl = Security.sanitizeUrl(entity.url);
-                                wrapped = `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>`;
+                                // ВАЖНО: НЕ экранируем URL
+                                wrapped = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>`;
                             }
                             break;
                         case 'mention':
@@ -401,7 +408,8 @@
                 }
             });
 
-            // Разбиваем на части для обработки URL только вне тегов
+            // ========== АВТОМАТИЧЕСКОЕ ОБНАРУЖЕНИЕ URL ==========
+            // Разбиваем на части, чтобы не обрабатывать URL внутри тегов
             const parts = [];
             let lastIndex = 0;
             const tagRegex = /<[^>]+>/g;
@@ -431,13 +439,13 @@
             escaped = parts.map(part => {
                 if (part.type === 'tag') return part.content;
                 
-                // Ищем URL в тексте и оборачиваем в ссылки
-                return part.content.replace(/(https?:\/\/[^\s<"')]+)(?![^<]*>)/g, (url) => {
+                // Ищем URL в тексте
+                return part.content.replace(/(https?:\/\/[^\s<>"']+)/g, (url) => {
                     const safeUrl = Security.sanitizeUrl(url);
                     if (safeUrl === '#') return url;
                     
-                    // ПОКАЗЫВАЕМ ПОЛНЫЙ URL, без обрезания
-                    return `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapeHtml(url)}</a>`;
+                    // ВАЖНО: НЕ экранируем URL повторно
+                    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${url}</a>`;
                 });
             }).join('');
 
@@ -446,7 +454,7 @@
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
 
-            // Обработка упоминаний и хэштегов (только вне тегов)
+            // Обработка упоминаний и хэштегов
             const finalParts = [];
             lastIndex = 0;
             const finalTagRegex = /<[^>]+>/g;
