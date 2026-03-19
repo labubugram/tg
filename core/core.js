@@ -249,8 +249,7 @@
                     .replace(/&/g, '&amp;')
                     .replace(/</g, '&lt;')
                     .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#039;');
+                    .replace(/"/g, '&quot;');
             };
 
             const isEmoji = (char) => {
@@ -263,7 +262,6 @@
                        (codePoint >= 0xE0020 && codePoint <= 0xE007F);   
             };
             
-            // Защита эмодзи
             const emojiSequences = [];
             let processed = '';
             for (let i = 0; i < text.length; i++) {
@@ -283,7 +281,6 @@
                 }
             }
 
-            // Защита блоков кода
             const codeBlocks = [];
             let processedWithCode = processed;
 
@@ -307,30 +304,19 @@
 
             let escaped = escapeHtml(processedWithCode);
 
-            // Восстановление эмодзи
             escaped = escaped.replace(/%%%EMOJI(\d+)%%%/g, (match, index) => {
                 return emojiSequences[parseInt(index)] || match;
             });
 
-            // ========== ИСПРАВЛЕННАЯ ОБРАБОТКА ССЫЛОК ==========
-            
-            // 1. Сначала обрабатываем markdown-style ссылки [text](url)
             escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
                 url = url.replace(/[<>"']/g, '');
                 const safeUrl = Security.sanitizeUrl(url);
                 if (safeUrl === '#') return match;
                 
                 const escapedLinkText = escapeHtml(linkText);
-                // Добавляем класс для CSS-переноса и data-атрибут для полного URL
-                return `<a href="${escapeHtml(safeUrl)}" 
-                            target="_blank" 
-                            rel="noopener noreferrer nofollow" 
-                            class="tg-link" 
-                            data-full-url="${escapeHtml(url)}"
-                            title="${escapeHtml(url)}">${escapedLinkText}</a>`;
+                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapedLinkText}</a>`;
             });
 
-            // Обработка текстовых сущностей (жирный, курсив и т.д.)
             if (entities && entities.length > 0) {
                 const sortedEntities = [...entities].sort((a, b) => b.offset - a.offset);
                 
@@ -372,12 +358,7 @@
                         case 'text_link':
                             if (entity.url) {
                                 const safeUrl = Security.sanitizeUrl(entity.url);
-                                wrapped = `<a href="${escapeHtml(safeUrl)}" 
-                                              target="_blank" 
-                                              rel="noopener noreferrer nofollow" 
-                                              class="tg-link"
-                                              data-full-url="${escapeHtml(entity.url)}"
-                                              title="${escapeHtml(entity.url)}">${content}</a>`;
+                                wrapped = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>`;
                             }
                             break;
                         case 'mention':
@@ -391,7 +372,6 @@
                     escaped = before + wrapped + after;
                 }
             } else {
-                // Обработка Markdown-подобного форматирования (если нет entities)
                 escaped = escaped.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
                 escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
                 escaped = escaped.replace(/__(.*?)__/g, '<u>$1</u>');
@@ -401,99 +381,69 @@
                 escaped = escaped.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
             }
 
-            // Восстановление блоков кода
             escaped = escaped.replace(/%%%CODEBLOCK(\d+)%%%/g, (match, index) => {
                 const block = codeBlocks[parseInt(index)];
                 if (!block) return match;
                 
                 const content = escapeHtml(block.content);
                 if (block.type === 'pre') {
-                    return `<pre class="tg-code-block" style="white-space: pre-wrap; word-wrap: break-word;"><code>${content}</code></pre>`;
+                    return `<pre class="tg-code-block"><code>${content}</code></pre>`;
                 } else {
                     return `<code class="tg-inline-code">${content}</code>`;
                 }
             });
 
-            // 2. Автоматическое обнаружение URL (только если они еще не обернуты в теги)
             const parts = [];
             let lastIndex = 0;
-            const tagRegex = /<[^>]+>/g;
+            const linkRegex = /<a[^>]*>.*?<\/a>/g;
             let match;
-            
-            while ((match = tagRegex.exec(escaped)) !== null) {
-                // Добавляем текст перед тегом
-                if (match.index > lastIndex) {
-                    parts.push({
-                        type: 'text',
-                        content: escaped.substring(lastIndex, match.index)
-                    });
-                }
-                // Добавляем сам тег
-                parts.push({
-                    type: 'tag',
-                    content: match[0]
-                });
+            while ((match = linkRegex.exec(escaped)) !== null) {
+                parts.push(escaped.substring(lastIndex, match.index));
+                parts.push(match[0]);
                 lastIndex = match.index + match[0].length;
             }
-            // Добавляем оставшийся текст
-            if (lastIndex < escaped.length) {
-                parts.push({
-                    type: 'text',
-                    content: escaped.substring(lastIndex)
-                });
-            }
+            parts.push(escaped.substring(lastIndex));
             
-            // Обрабатываем только текстовые части (не внутри тегов)
             escaped = parts.map(part => {
-                if (part.type === 'tag') return part.content;
+                if (part.startsWith('<a')) return part;
                 
-                // Ищем URL в тексте
-                return part.content.replace(/(https?:\/\/[^\s<"')]+)(?![^<]*>)/g, (url) => {
+                return part.replace(/(https?:\/\/[^\s<"')]+)(?![^<]*>)/g, (url) => {
                     const safeUrl = Security.sanitizeUrl(url);
                     if (safeUrl === '#') return url;
                     
-                    // ПОКАЗЫВАЕМ ПОЛНЫЙ URL, без обрезания
-                    // Добавляем класс для CSS-переноса и data-атрибут
-                    return `<a href="${escapeHtml(safeUrl)}" 
-                                target="_blank" 
-                                rel="noopener noreferrer nofollow" 
-                                class="tg-link"
-                                data-full-url="${escapeHtml(url)}"
-                                title="${escapeHtml(url)}">${escapeHtml(url)}</a>`;
+                    let displayText = url;
+                    if (url.length > 50) {
+                        displayText = url.substring(0, 40) + '…' + url.substring(url.length - 10);
+                    }
+                    
+                    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${displayText}</a>`;
                 });
             }).join('');
 
-            // Обработка цитат
             escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
 
-            // Обработка упоминаний и хэштегов (только вне тегов)
-            const finalParts = [];
+            const tagParts = [];
             lastIndex = 0;
-            const finalTagRegex = /<[^>]+>/g;
-            
-            while ((match = finalTagRegex.exec(escaped)) !== null) {
-                if (match.index > lastIndex) {
-                    finalParts.push({
-                        type: 'text',
-                        content: escaped.substring(lastIndex, match.index)
-                    });
-                }
-                finalParts.push({
+            const tagRegex = /<[^>]+>/g;
+            while ((match = tagRegex.exec(escaped)) !== null) {
+                tagParts.push({
+                    type: 'text',
+                    content: escaped.substring(lastIndex, match.index)
+                });
+                tagParts.push({
                     type: 'tag',
                     content: match[0]
                 });
                 lastIndex = match.index + match[0].length;
             }
-            if (lastIndex < escaped.length) {
-                finalParts.push({
-                    type: 'text',
-                    content: escaped.substring(lastIndex)
-                });
-            }
+            tagParts.push({
+                type: 'text',
+                content: escaped.substring(lastIndex)
+            });
             
-            escaped = finalParts.map(part => {
+            escaped = tagParts.map(part => {
                 if (part.type === 'tag') return part.content;
                 
                 return part.content
@@ -501,7 +451,6 @@
                     .replace(/(?<!\w)#(\w+)/g, '<span class="tg-hashtag" data-hashtag="#$1">#$1</span>');
             }).join('');
 
-            // Замена переносов строк на <br>
             escaped = escaped.replace(/\n/g, '<br>');
 
             return escaped;
