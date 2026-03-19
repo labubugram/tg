@@ -1386,7 +1386,7 @@
             document.getElementById('channelUsername').textContent = `@${CONFIG.CHANNEL_USERNAME}`;
             const avatarEl = document.getElementById('channelAvatar');
             if (avatarEl) {
-                avatarEl.innerHTML = `<img src="/tg/core/avatar.svg" style="width:54px; height:54px; object-fit:cover;" alt="Channel avatar" loading="lazy">`;
+                avatarEl.innerHTML = `<img src="avatar.jpg" style="width:54px; height:54px; object-fit:cover;" alt="Channel avatar">`;
             }
         },
         
@@ -1523,7 +1523,7 @@
                         // Другие ошибки - показываем сообщение
                         const container = video.closest('.media-container');
                         if (container && !container.querySelector('.media-error')) {
-                            container.innerHTML = '<div class="media-error">🎥 Failed to load video</div>';
+                            container.innerHTML = '<div class="media-error">Failed to load video</div>';
                         }
                     }
                 });
@@ -1540,7 +1540,7 @@
                     console.error('Image failed to load:', img.src);
                     const container = img.closest('.media-container');
                     if (container && !container.querySelector('.media-error')) {
-                        container.innerHTML = '<div class="media-error">📷 Failed to load image</div>';
+                        container.innerHTML = '<div class="media-error">Failed to load image</div>';
                     }
                 });
             });
@@ -1582,16 +1582,16 @@
                 if (statusInfo) {
                     switch(statusInfo.status) {
                         case 'downloading':
-                            mediaHTML = `<div class="media-processing">📥 Downloading... ${statusInfo.progress}%</div>`;
+                            mediaHTML = `<div class="media-processing">Downloading... ${statusInfo.progress}%</div>`;
                             break;
                         case 'processing':
-                            mediaHTML = `<div class="media-processing">⚙️ Processing... ${statusInfo.progress}%</div>`;
+                            mediaHTML = `<div class="media-processing">Processing... ${statusInfo.progress}%</div>`;
                             break;
                         case 'uploading':
-                            mediaHTML = `<div class="media-processing">☁️ Uploading to CDN... ${statusInfo.progress}%</div>`;
+                            mediaHTML = `<div class="media-processing">Uploading to CDN... ${statusInfo.progress}%</div>`;
                             break;
                         case 'failed':
-                            mediaHTML = '<div class="media-unavailable">❌ Media failed to load</div>';
+                            mediaHTML = '<div class="media-unavailable">Media failed to load</div>';
                             break;
                         case 'ready':
                             mediaHTML = '<div class="media-loading"><img src="/tg/core/loader.svg" alt="Loading" class="media-loader"></div>';
