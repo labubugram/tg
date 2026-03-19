@@ -643,6 +643,7 @@ body {
 /* Links */
 .tg-link {
     word-break: break-word;
+    display: inline;
     color: var(--accent);
     text-decoration: none;
     border-bottom: 1px dashed var(--accent-light);
