@@ -305,30 +305,37 @@
                 return placeholder;
             });
 
-            let escaped = escapeHtml(processedWithCode);
+            // ========== ЗАЩИТА MARKDOWN-ССЫЛОК ==========
+            const mdLinkPlaceholders = [];
+            let textWithProtectedMdLinks = processedWithCode.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
+                const placeholder = `%%%MDLINK${mdLinkPlaceholders.length}%%%`;
+                mdLinkPlaceholders.push({
+                    linkText: linkText,
+                    url: url
+                });
+                return placeholder;
+            });
 
-            // Восстановление эмодзи
+            // ========== ЗАЩИТА URL ОТ ФОРМАТИРОВАНИЯ ==========
+            const urlPlaceholders = [];
+            let textWithProtectedUrls = textWithProtectedMdLinks.replace(/(https?:\/\/[^\s<>"']+)/g, (url) => {
+                const placeholder = `%%%URL${urlPlaceholders.length}%%%`;
+                urlPlaceholders.push({
+                    url: url,
+                    safeUrl: Security.sanitizeUrl(url)
+                });
+                return placeholder;
+            });
+
+            // Теперь экранируем HTML
+            let escaped = escapeHtml(textWithProtectedUrls);
+
+            // Восстановление эмодзи (они уже экранированы, но нужно вернуть символы)
             escaped = escaped.replace(/%%%EMOJI(\d+)%%%/g, (match, index) => {
                 return emojiSequences[parseInt(index)] || match;
             });
 
-            // ========== ВАЖНО: СНАЧАЛА ОБРАБАТЫВАЕМ MARKDOWN-ССЫЛКИ ==========
-            escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
-                // Убираем лишние символы из URL
-                url = url.replace(/[<>"']/g, '');
-                
-                // ВАЖНО: НЕ экранируем URL повторно, только проверяем безопасность
-                const safeUrl = Security.sanitizeUrl(url);
-                if (safeUrl === '#') return match;
-                
-                // Экранируем только текст ссылки, НЕ URL
-                const escapedLinkText = escapeHtml(linkText);
-                
-                // Возвращаем чистый HTML без лишних экранирований
-                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapedLinkText}</a>`;
-            });
-
-            // Обработка сущностей форматирования
+            // ========== ОБРАБОТКА ФОРМАТИРОВАНИЯ ==========
             if (entities && entities.length > 0) {
                 const sortedEntities = [...entities].sort((a, b) => b.offset - a.offset);
                 
@@ -370,7 +377,6 @@
                         case 'text_link':
                             if (entity.url) {
                                 const safeUrl = Security.sanitizeUrl(entity.url);
-                                // ВАЖНО: НЕ экранируем URL
                                 wrapped = `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${content}</a>`;
                             }
                             break;
@@ -386,6 +392,7 @@
                 }
             } else {
                 // Обработка Markdown-подобного форматирования
+                // ВАЖНО: обрабатываем в правильном порядке, чтобы не конфликтовало с URL
                 escaped = escaped.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
                 escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
                 escaped = escaped.replace(/__(.*?)__/g, '<u>$1</u>');
@@ -408,56 +415,40 @@
                 }
             });
 
-            // ========== АВТОМАТИЧЕСКОЕ ОБНАРУЖЕНИЕ URL ==========
-            // Разбиваем на части, чтобы не обрабатывать URL внутри тегов
-            const parts = [];
-            let lastIndex = 0;
-            const tagRegex = /<[^>]+>/g;
-            let match;
-            
-            while ((match = tagRegex.exec(escaped)) !== null) {
-                if (match.index > lastIndex) {
-                    parts.push({
-                        type: 'text',
-                        content: escaped.substring(lastIndex, match.index)
-                    });
-                }
-                parts.push({
-                    type: 'tag',
-                    content: match[0]
-                });
-                lastIndex = match.index + match[0].length;
-            }
-            if (lastIndex < escaped.length) {
-                parts.push({
-                    type: 'text',
-                    content: escaped.substring(lastIndex)
-                });
-            }
-            
-            // Обрабатываем URL только в текстовых частях
-            escaped = parts.map(part => {
-                if (part.type === 'tag') return part.content;
+            // ========== ВОССТАНОВЛЕНИЕ URL ==========
+            escaped = escaped.replace(/%%%URL(\d+)%%%/g, (match, index) => {
+                const placeholder = urlPlaceholders[parseInt(index)];
+                if (!placeholder) return match;
                 
-                // Ищем URL в тексте
-                return part.content.replace(/(https?:\/\/[^\s<>"']+)/g, (url) => {
-                    const safeUrl = Security.sanitizeUrl(url);
-                    if (safeUrl === '#') return url;
-                    
-                    // ВАЖНО: НЕ экранируем URL повторно
-                    return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${url}</a>`;
-                });
-            }).join('');
+                const { url, safeUrl } = placeholder;
+                if (safeUrl === '#') return url;
+                
+                // Возвращаем ссылку с полным URL в тексте
+                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${url}</a>`;
+            });
+
+            // ========== ВОССТАНОВЛЕНИЕ MARKDOWN-ССЫЛОК ==========
+            escaped = escaped.replace(/%%%MDLINK(\d+)%%%/g, (match, index) => {
+                const placeholder = mdLinkPlaceholders[parseInt(index)];
+                if (!placeholder) return match;
+                
+                const { linkText, url } = placeholder;
+                const safeUrl = Security.sanitizeUrl(url);
+                if (safeUrl === '#') return `[${linkText}](${url})`;
+                
+                return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${escapeHtml(linkText)}</a>`;
+            });
 
             // Обработка цитат
             escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
 
-            // Обработка упоминаний и хэштегов
+            // Обработка упоминаний и хэштегов (только вне тегов)
             const finalParts = [];
-            lastIndex = 0;
+            let lastIndex = 0;
             const finalTagRegex = /<[^>]+>/g;
+            let match;
             
             while ((match = finalTagRegex.exec(escaped)) !== null) {
                 if (match.index > lastIndex) {
