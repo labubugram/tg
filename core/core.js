@@ -33,12 +33,11 @@
         MEDIA_FAILED_TIMEOUT: 3600000,
         MEDIA_READY_DELAY: 1000,
         MEDIA_RETRY_ON_ERROR: true,
-        // ========== НОВЫЕ ПАРАМЕТРЫ ДЛЯ УПРАВЛЕНИЯ ЗАГРУЗКАМИ ==========
-        MAX_CONCURRENT_LOADS: 3,           // Максимум одновременных загрузок
-        MEDIA_LOAD_TIMEOUT: 30000,          // Таймаут загрузки медиа (30 сек)
-        VIDEO_PRELOAD: 'metadata',          // Предзагрузка только метаданных
-        RETRY_ON_NETWORK_ERROR: true,       // Повтор при сетевых ошибках
-        USE_LAZY_LOADING: true               // Использовать ленивую загрузку
+        MAX_CONCURRENT_LOADS: 3,
+        MEDIA_LOAD_TIMEOUT: 30000,
+        VIDEO_PRELOAD: 'metadata',
+        RETRY_ON_NETWORK_ERROR: true,
+        USE_LAZY_LOADING: true
     };
 
     const State = {
@@ -59,10 +58,9 @@
         mediaRetryTimeouts: new Map(),
         mediaStatusStore: new Map(),
         mediaReadyQueue: new Set(),
-        // ========== НОВЫЕ СОСТОЯНИЯ ДЛЯ УПРАВЛЕНИЯ ЗАГРУЗКАМИ ==========
-        activeLoads: 0,                      // Количество активных загрузок
-        loadQueue: [],                        // Очередь ожидающих загрузок
-        failedMedia: new Map(),                // Храним причину отказа для отладки
+        activeLoads: 0,
+        loadQueue: [],
+        failedMedia: new Map(),
         scrollTimeout: null,
         recentMessages: new Map(),
         lastDocumentHeight: 0,
@@ -89,10 +87,6 @@
         serverVersion: '3.0'
     };
 
-    // ============================================
-    // УТИЛИТЫ
-    // ============================================
-    
     function cleanupResources() {
         State.intervals.forEach(clearInterval);
         State.intervals = [];
@@ -113,7 +107,6 @@
         State.mediaRetryTimeouts.forEach(clearTimeout);
         State.mediaRetryTimeouts.clear();
         
-        // Очищаем очередь загрузок
         State.loadQueue = [];
         State.activeLoads = 0;
     }
@@ -174,9 +167,8 @@
                 }
             }
             
-            // Очищаем failedMedia
             for (const [messageId, data] of State.failedMedia.entries()) {
-                if (now - data.timestamp > 3600000) { // 1 час
+                if (now - data.timestamp > 3600000) {
                     State.failedMedia.delete(messageId);
                 }
             }
@@ -263,7 +255,6 @@
                        (codePoint >= 0xE0020 && codePoint <= 0xE007F);   
             };
             
-            // Защита эмодзи
             const emojiSequences = [];
             let processed = '';
             for (let i = 0; i < text.length; i++) {
@@ -283,7 +274,6 @@
                 }
             }
 
-            // Защита блоков кода
             const codeBlocks = [];
             let processedWithCode = processed;
 
@@ -305,20 +295,14 @@
                 return placeholder;
             });
 
-            // Экранируем HTML
             let escaped = escapeHtml(processedWithCode);
 
-            // Восстановление эмодзи
             escaped = escaped.replace(/%%%EMOJI(\d+)%%%/g, (match, index) => {
                 return emojiSequences[parseInt(index)] || match;
             });
 
-            // ========== ОСНОВНАЯ ЛОГИКА ФОРМАТИРОВАНИЯ ==========
-            
-            // Хранилище для ссылок
             const linkPlaceholders = [];
             
-            // 1. Сначала обрабатываем markdown-ссылки [text](url)
             escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
                 url = url.replace(/[<>"']/g, '');
                 const safeUrl = Security.sanitizeUrl(url);
@@ -333,8 +317,6 @@
                 return placeholder;
             });
 
-            // 2. Обрабатываем автоматические URL
-            // Разбиваем на части, чтобы не трогать уже обработанные ссылки
             const urlParts = [];
             let lastIndex = 0;
             const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
@@ -368,9 +350,7 @@
             
             escaped = urlParts.join('');
 
-            // 3. Обрабатываем форматирование (жирный, курсив и т.д.)
             if (entities && entities.length > 0) {
-                // Используем entities из Telegram API
                 const sortedEntities = [...entities].sort((a, b) => b.offset - a.offset);
                 
                 for (const entity of sortedEntities) {
@@ -411,7 +391,6 @@
                         case 'text_link':
                             if (entity.url) {
                                 const safeUrl = Security.sanitizeUrl(entity.url);
-                                // Сохраняем как ссылку с возможным форматированием внутри
                                 const linkPlaceholder = `%%%LINK${linkPlaceholders.length}%%%`;
                                 linkPlaceholders.push({
                                     type: 'entity',
@@ -432,33 +411,19 @@
                     escaped = before + wrapped + after;
                 }
             } else {
-                // Markdown-подобное форматирование для случаев без entities
-                // Сначала самые специфичные паттерны
                 let formatted = escaped;
                 
-                // Жирный курсив
                 formatted = formatted.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
-                
-                // Жирный
                 formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
-                
-                // Подчеркивание
                 formatted = formatted.replace(/__(.*?)__/g, '<u>$1</u>');
-                
-                // Курсив (оба варианта)
                 formatted = formatted.replace(/\*(.*?)\*/g, '<i>$1</i>');
                 formatted = formatted.replace(/_(.*?)_/g, '<i>$1</i>');
-                
-                // Зачеркивание
                 formatted = formatted.replace(/~~(.*?)~~/g, '<s>$1</s>');
-                
-                // Спойлер
                 formatted = formatted.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
                 
                 escaped = formatted;
             }
 
-            // Восстановление блоков кода
             escaped = escaped.replace(/%%%CODEBLOCK(\d+)%%%/g, (match, index) => {
                 const block = codeBlocks[parseInt(index)];
                 if (!block) return match;
@@ -471,21 +436,17 @@
                 }
             });
 
-            // 4. Восстанавливаем все ссылки
             escaped = escaped.replace(/%%%LINK(\d+)%%%/g, (match, index) => {
                 const link = linkPlaceholders[parseInt(index)];
                 if (!link) return match;
                 
-                // content уже может содержать HTML-теги форматирования (жирный, курсив и т.д.)
                 return `<a href="${link.url}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${link.content}</a>`;
             });
 
-            // Обработка цитат
             escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
 
-            // Обработка упоминаний и хэштегов (только вне тегов)
             const finalParts = [];
             lastIndex = 0;
             const tagRegex = /<[^>]+>/g;
@@ -518,10 +479,8 @@
                     .replace(/(?<!\w)#(\w+)/g, '<span class="tg-hashtag" data-hashtag="#$1">#$1</span>');
             }).join('');
 
-            // Замена переносов строк на <br>
             escaped = escaped.replace(/\n/g, '<br>');
 
-            // Финальная очистка: убираем маркеры форматирования, которые могли остаться внутри ссылок
             escaped = escaped.replace(/<a([^>]*)>\*\*(.*?)\*\*<\/a>/g, '<a$1><b>$2</b></a>');
             escaped = escaped.replace(/<a([^>]*)>\*(.*?)\*<\/a>/g, '<a$1><i>$2</i></a>');
             escaped = escaped.replace(/<a([^>]*)>__(.*?)__<\/a>/g, '<a$1><u>$2</u></a>');
@@ -744,10 +703,9 @@
             if (!Security.validateMessageId(messageId)) return null;
             if (State.mediaCache.has(messageId)) return State.mediaCache.get(messageId);
 
-            // ← НОВАЯ ЗАЩИТА: не запрашиваем пока медиа ещё грузится
             const post = State.posts.get(messageId);
             if (post && post.media_pending === true) {
-                return null;   // ждём media_ready
+                return null;
             }
 
             try {
@@ -851,7 +809,6 @@
             }
         },
         
-        // ========== НОВЫЙ МЕТОД: Принудительная остановка всех загрузок ==========
         abortAllLoads() {
             document.querySelectorAll('video[data-loading="true"]').forEach(video => {
                 video.pause();
@@ -945,10 +902,6 @@
             });
         }
     };
-
-    // ============================================
-    // УЛУЧШЕННЫЙ MediaManager с контролем параллельных загрузок
-    // ============================================
     
     const MediaManager = {
         replaceMediaContainer(postEl, html, messageId) {
@@ -1033,7 +986,6 @@
             }
         },
         
-        // ========== НОВЫЙ МЕТОД: Запуск следующей загрузки из очереди ==========
         processNextInQueue() {
             if (State.activeLoads >= CONFIG.MAX_CONCURRENT_LOADS || State.loadQueue.length === 0) {
                 return;
@@ -1049,14 +1001,12 @@
             });
         },
         
-        // ========== НОВЫЙ МЕТОД: Фактическая загрузка с таймаутом ==========
         async _performLoad(messageId) {
             const post = State.posts.get(messageId);
             if (!post || !post.has_media || post.media_url) {
                 return;
             }
             
-            // Устанавливаем таймаут для загрузки
             const timeoutPromise = new Promise((_, reject) => {
                 safeSetTimeout(() => reject(new Error('Media load timeout')), CONFIG.MEDIA_LOAD_TIMEOUT);
             });
@@ -1083,7 +1033,6 @@
             } catch (error) {
                 console.error(`Failed to load media for message ${messageId}:`, error);
                 
-                // Сохраняем информацию об ошибке
                 State.failedMedia.set(messageId, {
                     error: error.message,
                     timestamp: Date.now()
@@ -1093,7 +1042,6 @@
                 if (currentRetries < CONFIG.MEDIA_MAX_RETRIES) {
                     State.mediaRetryCount.set(messageId, currentRetries + 1);
                     
-                    // Добавляем обратно в очередь с задержкой
                     safeSetTimeout(() => {
                         this.queueMediaLoad(messageId, true);
                     }, CONFIG.MEDIA_RETRY_DELAY * Math.pow(2, currentRetries));
@@ -1104,7 +1052,6 @@
             }
         },
         
-        // ========== НОВЫЙ МЕТОД: Постановка в очередь на загрузку ==========
         queueMediaLoad(messageId, isRetry = false) {
             if (State.mediaLoading.has(messageId)) {
                 return;
@@ -1117,7 +1064,6 @@
             
             State.mediaLoading.add(messageId);
             
-            // Проверяем, не в очереди ли уже
             if (!State.loadQueue.includes(messageId)) {
                 State.loadQueue.push(messageId);
             }
@@ -1125,7 +1071,6 @@
             this.processNextInQueue();
         },
         
-        // ========== ИСПРАВЛЕННЫЙ loadMedia ==========
         loadMedia(messageId, isRetry = false) {
             if (State.mediaLoading.has(messageId)) {
                 return;
@@ -1164,7 +1109,6 @@
                 }
             }
             
-            // Ставим в очередь вместо прямой загрузки
             this.queueMediaLoad(messageId, isRetry);
         },
         
@@ -1199,7 +1143,6 @@
                             mediaContainer.appendChild(placeholder);
                         }
                         
-                        // Удаляем из очереди загрузок
                         const index = State.loadQueue.indexOf(parseInt(messageId));
                         if (index > -1) {
                             State.loadQueue.splice(index, 1);
@@ -1301,7 +1244,6 @@
             State.mediaReadyQueue.delete(messageId);
             State.failedMedia.delete(messageId);
             
-            // Удаляем из очереди если был
             const index = State.loadQueue.indexOf(messageId);
             if (index > -1) {
                 State.loadQueue.splice(index, 1);
@@ -1578,14 +1520,11 @@
                 video.addEventListener('play', () => VideoManager.handleVideoPlay(video));
                 video.addEventListener('pause', () => VideoManager.handleVideoPause(video));
                 
-                // Улучшенная обработка ошибок
                 video.addEventListener('error', (e) => {
                     console.error(`Video failed to load: ${video.src}`, e);
                     
-                    // Проверяем, не ошибка ли это сети (нет интернета)
                     const error = video.error;
                     if (error && error.code === MediaError.MEDIA_ERR_NETWORK) {
-                        // Сетевая ошибка - пробуем перезагрузить позже
                         const messageId = video.closest('.post')?.dataset.messageId;
                         if (messageId && CONFIG.RETRY_ON_NETWORK_ERROR) {
                             safeSetTimeout(() => {
@@ -1594,7 +1533,6 @@
                             }, 5000);
                         }
                     } else {
-                        // Другие ошибки - показываем сообщение
                         const container = video.closest('.media-container');
                         if (container && !container.querySelector('.media-error')) {
                             container.innerHTML = '<div class="media-error">Failed to load video</div>';
@@ -1602,7 +1540,6 @@
                     }
                 });
                 
-                // Добавляем поддержку загрузки при возобновлении сети
                 if (navigator.onLine === false) {
                     video.setAttribute('data-pending', 'true');
                 }
@@ -1620,7 +1557,6 @@
             });
         },
         
-        // ========== НОВЫЙ МЕТОД: Обработка восстановления сети ==========
         handleNetworkOnline() {
             console.log('Network is online, retrying failed videos');
             document.querySelectorAll('video[data-pending="true"]').forEach(video => {
@@ -1629,7 +1565,6 @@
                 video.play().catch(() => {});
             });
             
-            // Пробуем перезагрузить неудачные медиа
             State.failedMedia.forEach((_, messageId) => {
                 if (State.mediaRetryCount.get(messageId) || 0 < CONFIG.MEDIA_MAX_RETRIES) {
                     MediaManager.loadMedia(messageId, true);
@@ -1898,7 +1833,6 @@
                 State.fullMessageCache.delete(messageId);
                 State.failedMedia.delete(messageId);
                 
-                // Удаляем из очереди загрузок
                 const queueIndex = State.loadQueue.indexOf(Number(messageId));
                 if (queueIndex > -1) {
                     State.loadQueue.splice(queueIndex, 1);
@@ -2183,10 +2117,6 @@
         
         UI.initIntersectionObserver();
     }
-
-    // ============================================
-    // WebSocketManager
-    // ============================================
     
     const WebSocketManager = {
         giveUp: false,
@@ -2531,16 +2461,14 @@
                 post.media_pending = false;
             }
 
-            // Принудительное обновление src + перезагрузка
             const mediaElem = document.querySelector(`.post[data-message-id="${messageId}"] video, .post[data-message-id="${messageId}"] img`);
             if (mediaElem) {
-                mediaElem.src = '';                     // сначала сбрасываем (важно для видео!)
-                mediaElem.src = mediaUrl + '?_t=' + Date.now();  // добавляем timestamp
+                mediaElem.src = '';
+                mediaElem.src = mediaUrl + '?_t=' + Date.now();
             } else if (post) {
                 UI.updatePost(messageId, post);
             }
 
-            // На всякий случай — ещё один запрос через 400 мс
             safeSetTimeout(() => MediaManager.loadMedia(messageId), 400);
         },
         
@@ -2753,7 +2681,6 @@
             if (e.target === document.getElementById('lightbox')) Lightbox.close();
         });
         
-        // ========== НОВОЕ: Обработка восстановления сети ==========
         window.addEventListener('online', () => {
             console.log('Network is online');
             UI.handleNetworkOnline();
