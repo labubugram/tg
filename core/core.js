@@ -206,12 +206,24 @@
 
     const Formatters = {
         formatDate(date) {
-            let dateStr = date;
-            if (typeof date === 'string' && !date.includes('Z') && !date.includes('+') && !date.includes('-')) {
-                dateStr = date + 'Z';
-            }
+            if (!date) return '';
             
-            const d = new Date(dateStr);
+            let d;
+            if (typeof date === 'string') {
+                d = new Date(date);
+                if (isNaN(d.getTime())) {
+                    const timestamp = Date.parse(date);
+                    if (!isNaN(timestamp)) {
+                        d = new Date(timestamp);
+                    } else {
+                        return 'Invalid date';
+                    }
+                }
+            } else if (date instanceof Date) {
+                d = date;
+            } else {
+                d = new Date(date);
+            }
             
             if (isNaN(d.getTime())) {
                 return 'Invalid date';
@@ -222,18 +234,26 @@
             const yesterday = new Date(now);
             yesterday.setDate(now.getDate() - 1);
             const isYesterday = d.toDateString() === yesterday.toDateString();
+            
             const time = d.toLocaleTimeString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit',
-                hour12: false
+                second: undefined,
+                hour12: false,
+                timeZone: 'Europe/Moscow'
             });
+            
             if (isToday) return `Сегодня в ${time}`;
             if (isYesterday) return `Вчера в ${time}`;
-            return d.toLocaleDateString('ru-RU', {
+            
+            const dateStr = d.toLocaleDateString('ru-RU', {
                 day: '2-digit',
                 month: 'long',
-                year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric'
-            }) + ` в ${time}`;
+                year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
+                timeZone: 'Europe/Moscow'
+            });
+            
+            return `${dateStr} в ${time}`;
         },
         
         formatViews(views) {
