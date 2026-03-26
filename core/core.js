@@ -206,7 +206,17 @@
 
     const Formatters = {
         formatDate(date) {
-            const d = new Date(date);
+            let dateStr = date;
+            if (typeof date === 'string' && !date.includes('Z') && !date.includes('+') && !date.includes('-')) {
+                dateStr = date + 'Z';
+            }
+            
+            const d = new Date(dateStr);
+            
+            if (isNaN(d.getTime())) {
+                return 'Invalid date';
+            }
+            
             const now = new Date();
             const isToday = d.toDateString() === now.toDateString();
             const yesterday = new Date(now);
@@ -223,7 +233,7 @@
                 day: '2-digit',
                 month: 'long',
                 year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric'
-            }) + ` at ${time}`;
+            }) + ` в ${time}`;
         },
         
         formatViews(views) {
