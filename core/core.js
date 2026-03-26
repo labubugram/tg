@@ -217,8 +217,8 @@
                 minute: '2-digit',
                 hour12: false
             });
-            if (isToday) return `Today at ${time}`;
-            if (isYesterday) return `Yesterday at ${time}`;
+            if (isToday) return `Сегодня в ${time}`;
+            if (isYesterday) return `Вчера в ${time}`;
             return d.toLocaleDateString('ru-RU', {
                 day: '2-digit',
                 month: 'long',
