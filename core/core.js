@@ -1668,7 +1668,7 @@
                             </div>
                             <div class="post-date">
                                 ${date}
-                                ${post.is_edited ? '<span class="edited-mark">(edited)</span>' : ''}
+
                             </div>
                         </div>
                     </div>
