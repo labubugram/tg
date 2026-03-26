@@ -1735,7 +1735,7 @@
                     if (!dateEl.innerHTML.includes(newDate)) {
                         dateEl.innerHTML = newDate;
                         if (!dateEl.innerHTML.includes('(edited)')) {
-                            dateEl.innerHTML += ' <span class="edited-mark">(edited)</span>';
+                            dateEl.innerHTML += ' ';
                         }
                         changed = true;
                     }
