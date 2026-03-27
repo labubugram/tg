@@ -235,8 +235,7 @@
                             d.getMonth() === now.getMonth() &&
                             d.getDate() === now.getDate();
             
-            const yesterday = new Date(now);
-            yesterday.setDate(yesterday.getDate() - 1);
+            const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
             const isYesterday = d.getFullYear() === yesterday.getFullYear() &&
                                 d.getMonth() === yesterday.getMonth() &&
                                 d.getDate() === yesterday.getDate();
