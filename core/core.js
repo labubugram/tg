@@ -207,49 +207,42 @@
     const Formatters = {
         formatDate(date) {
             if (!date) return '';
-           
-            let d;
-            if (typeof date === 'string') {
-                d = new Date(date);
-                if (isNaN(d.getTime())) {
-                    d = new Date(date + 'Z');
-                }
-            } else if (date instanceof Date) {
-                d = new Date(date.getTime());
-            } else {
-                d = new Date(date);
+
+            let d = new Date(date);
+            if (isNaN(d.getTime())) {
+                d = new Date(date + 'Z');
             }
-           
+
             if (isNaN(d.getTime())) {
                 return 'Invalid date';
             }
-           
+
             const now = new Date();
-            
+
             const isToday = d.getFullYear() === now.getFullYear() &&
                             d.getMonth() === now.getMonth() &&
                             d.getDate() === now.getDate();
-            
+
             const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
             const isYesterday = d.getFullYear() === yesterday.getFullYear() &&
                                 d.getMonth() === yesterday.getMonth() &&
                                 d.getDate() === yesterday.getDate();
-           
+
             const time = d.toLocaleTimeString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: false
             });
-           
+
             if (isToday) return `Сегодня в ${time}`;
             if (isYesterday) return `Вчера в ${time}`;
-           
+
             const dateStr = d.toLocaleDateString('ru-RU', {
                 day: '2-digit',
                 month: 'long',
                 year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric'
             });
-           
+
             return `${dateStr} в ${time}`;
         },
        
