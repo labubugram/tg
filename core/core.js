@@ -210,7 +210,10 @@
            
             let d;
             if (typeof date === 'string') {
-                d = new Date(date + 'Z');
+                d = new Date(date);
+                if (isNaN(d.getTime())) {
+                    d = new Date(date + 'Z');
+                }
             } else if (date instanceof Date) {
                 d = new Date(date.getTime());
             } else {
