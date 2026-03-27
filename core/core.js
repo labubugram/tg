@@ -207,46 +207,34 @@
     const Formatters = {
         formatDate(date) {
             if (!date) return '';
-
+            
             let d = new Date(date);
             if (isNaN(d.getTime())) {
                 d = new Date(date + 'Z');
             }
-
-            if (isNaN(d.getTime())) {
-                return 'Invalid date';
-            }
-
-            // +1 час
-            d = new Date(d.getTime() + 60 * 60 * 1000);
-
+            if (isNaN(d.getTime())) return 'Invalid date';
+            
+            d.setHours(d.getHours() + 1);
+            
             const now = new Date();
-
-            const isToday = d.getFullYear() === now.getFullYear() &&
-                            d.getMonth() === now.getMonth() &&
-                            d.getDate() === now.getDate();
-
-            const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-            const isYesterday = d.getFullYear() === yesterday.getFullYear() &&
-                                d.getMonth() === yesterday.getMonth() &&
-                                d.getDate() === yesterday.getDate();
-
-            const time = d.toLocaleTimeString('ru-RU', {
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            });
-
+            const isToday = d.toDateString() === now.toDateString();
+            const isYesterday = new Date(now.setDate(now.getDate() - 1)).toDateString() === d.toDateString();
+            
+            const time = d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            
             if (isToday) return `Сегодня в ${time}`;
             if (isYesterday) return `Вчера в ${time}`;
-
-            const dateStr = d.toLocaleDateString('ru-RU', {
-                day: '2-digit',
-                month: 'long',
-                year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric'
-            });
-
+            
+            const dateStr = d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'long', year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+            
             return `${dateStr} в ${time}`;
+        },
+       
+        formatViews(views) {
+            if (!views) return '0';
+            if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
+            if (views >= 1000) return `${(views / 1000).toFixed(1)}K`;
+            return views.toString();
         },
        
         formatText(text, entities = []) {
