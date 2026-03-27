@@ -207,7 +207,7 @@
     const Formatters = {
         formatDate(date) {
             if (!date) return '';
-            
+           
             let d;
             if (typeof date === 'string') {
                 d = new Date(date);
@@ -224,48 +224,46 @@
             } else {
                 d = new Date(date);
             }
-            
+           
             if (isNaN(d.getTime())) {
                 return 'Invalid date';
             }
-            
+           
             const now = new Date();
             const isToday = d.toDateString() === now.toDateString();
             const yesterday = new Date(now);
             yesterday.setDate(now.getDate() - 1);
             const isYesterday = d.toDateString() === yesterday.toDateString();
-            
+           
             const time = d.toLocaleTimeString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit',
                 second: undefined,
-                hour12: false,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+                hour12: false
             });
-            
+           
             if (isToday) return `Сегодня в ${time}`;
             if (isYesterday) return `Вчера в ${time}`;
-            
+           
             const dateStr = d.toLocaleDateString('ru-RU', {
                 day: '2-digit',
                 month: 'long',
-                year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric',
-                timeZone: 'Europe/Moscow'
+                year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric'
             });
-            
+           
             return `${dateStr} в ${time}`;
         },
-        
+       
         formatViews(views) {
             if (!views) return '0';
             if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M`;
             if (views >= 1000) return `${(views / 1000).toFixed(1)}K`;
             return views.toString();
         },
-        
+       
         formatText(text, entities = []) {
             if (!text) return '';
-            
+           
             const escapeHtml = (unsafe) => {
                 return unsafe
                     .replace(/&/g, '&amp;')
@@ -274,17 +272,16 @@
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#039;');
             };
-
             const isEmoji = (char) => {
                 const codePoint = char.codePointAt(0);
-                return (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) || 
-                       (codePoint >= 0x2600 && codePoint <= 0x26FF) ||   
-                       (codePoint >= 0x2700 && codePoint <= 0x27BF) ||   
-                       (codePoint >= 0x1F1E6 && codePoint <= 0x1F1FF) || 
-                       codePoint === 0x200D || 
-                       (codePoint >= 0xE0020 && codePoint <= 0xE007F);   
+                return (codePoint >= 0x1F300 && codePoint <= 0x1F9FF) ||
+                       (codePoint >= 0x2600 && codePoint <= 0x26FF) ||
+                       (codePoint >= 0x2700 && codePoint <= 0x27BF) ||
+                       (codePoint >= 0x1F1E6 && codePoint <= 0x1F1FF) ||
+                       codePoint === 0x200D ||
+                       (codePoint >= 0xE0020 && codePoint <= 0xE007F);
             };
-            
+           
             const emojiSequences = [];
             let processed = '';
             for (let i = 0; i < text.length; i++) {
@@ -303,10 +300,8 @@
                     processed += char;
                 }
             }
-
             const codeBlocks = [];
             let processedWithCode = processed;
-
             processedWithCode = processedWithCode.replace(/```([\s\S]*?)```/g, (match, code) => {
                 const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
                 codeBlocks.push({
@@ -315,7 +310,6 @@
                 });
                 return placeholder;
             });
-
             processedWithCode = processedWithCode.replace(/`([^`]+)`/g, (match, code) => {
                 const placeholder = `%%%CODEBLOCK${codeBlocks.length}%%%`;
                 codeBlocks.push({
@@ -324,20 +318,17 @@
                 });
                 return placeholder;
             });
-
             let escaped = escapeHtml(processedWithCode);
-
             escaped = escaped.replace(/%%%EMOJI(\d+)%%%/g, (match, index) => {
                 return emojiSequences[parseInt(index)] || match;
             });
-
             const linkPlaceholders = [];
-            
+           
             escaped = escaped.replace(/\[([^\]]+)\]\(([^)]+?)(?:\s+"[^"]*")?\)/g, (match, linkText, url) => {
                 url = url.replace(/[<>"']/g, '');
                 const safeUrl = Security.sanitizeUrl(url);
                 if (safeUrl === '#') return match;
-                
+               
                 const placeholder = `%%%LINK${linkPlaceholders.length}%%%`;
                 linkPlaceholders.push({
                     type: 'markdown',
@@ -346,17 +337,16 @@
                 });
                 return placeholder;
             });
-
             const urlParts = [];
             let lastIndex = 0;
             const urlRegex = /(https?:\/\/[^\s<>"']+)/g;
             let match;
-            
+           
             while ((match = urlRegex.exec(escaped)) !== null) {
                 if (match.index > lastIndex) {
                     urlParts.push(escaped.substring(lastIndex, match.index));
                 }
-                
+               
                 const url = match[0];
                 const safeUrl = Security.sanitizeUrl(url);
                 if (safeUrl === '#') {
@@ -370,29 +360,28 @@
                     });
                     urlParts.push(placeholder);
                 }
-                
+               
                 lastIndex = match.index + match[0].length;
             }
-            
+           
             if (lastIndex < escaped.length) {
                 urlParts.push(escaped.substring(lastIndex));
             }
-            
+           
             escaped = urlParts.join('');
-
             if (entities && entities.length > 0) {
                 const sortedEntities = [...entities].sort((a, b) => b.offset - a.offset);
-                
+               
                 for (const entity of sortedEntities) {
                     const { offset, length, type } = entity;
                     if (offset < 0 || offset + length > escaped.length) continue;
-                    
+                   
                     const before = escaped.substring(0, offset);
                     const content = escaped.substring(offset, offset + length);
                     const after = escaped.substring(offset + length);
-                    
+                   
                     let wrapped = content;
-                    
+                   
                     switch (type) {
                         case 'bold':
                         case 'Bold':
@@ -437,12 +426,12 @@
                             wrapped = `<span class="tg-hashtag" data-hashtag="${content}">${content}</span>`;
                             break;
                     }
-                    
+                   
                     escaped = before + wrapped + after;
                 }
             } else {
                 let formatted = escaped;
-                
+               
                 formatted = formatted.replace(/\*\*\*(.*?)\*\*\*/g, '<b><i>$1</i></b>');
                 formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
                 formatted = formatted.replace(/__(.*?)__/g, '<u>$1</u>');
@@ -450,14 +439,13 @@
                 formatted = formatted.replace(/_(.*?)_/g, '<i>$1</i>');
                 formatted = formatted.replace(/~~(.*?)~~/g, '<s>$1</s>');
                 formatted = formatted.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
-                
+               
                 escaped = formatted;
             }
-
             escaped = escaped.replace(/%%%CODEBLOCK(\d+)%%%/g, (match, index) => {
                 const block = codeBlocks[parseInt(index)];
                 if (!block) return match;
-                
+               
                 const content = escapeHtml(block.content);
                 if (block.type === 'pre') {
                     return `<pre class="tg-code-block"><code>${content}</code></pre>`;
@@ -465,22 +453,19 @@
                     return `<code class="tg-inline-code">${content}</code>`;
                 }
             });
-
             escaped = escaped.replace(/%%%LINK(\d+)%%%/g, (match, index) => {
                 const link = linkPlaceholders[parseInt(index)];
                 if (!link) return match;
-                
+               
                 return `<a href="${link.url}" target="_blank" rel="noopener noreferrer nofollow" class="tg-link">${link.content}</a>`;
             });
-
             escaped = escaped.replace(/^&gt;&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-3">$1</blockquote>');
             escaped = escaped.replace(/^&gt;&gt; (.*)$/gm, '<blockquote class="tg-quote level-2">$1</blockquote>');
             escaped = escaped.replace(/^&gt; (.*)$/gm, '<blockquote class="tg-quote level-1">$1</blockquote>');
-
             const finalParts = [];
             lastIndex = 0;
             const tagRegex = /<[^>]+>/g;
-            
+           
             while ((match = tagRegex.exec(escaped)) !== null) {
                 if (match.index > lastIndex) {
                     finalParts.push({
@@ -500,22 +485,20 @@
                     content: escaped.substring(lastIndex)
                 });
             }
-            
+           
             escaped = finalParts.map(part => {
                 if (part.type === 'tag') return part.content;
-                
+               
                 return part.content
                     .replace(/(?<!\w)@(\w+)/g, '<span class="tg-mention" data-mention="@$1">@$1</span>')
                     .replace(/(?<!\w)#(\w+)/g, '<span class="tg-hashtag" data-hashtag="#$1">#$1</span>');
             }).join('');
-
             escaped = escaped.replace(/\n/g, '<br>');
-
             escaped = escaped.replace(/<a([^>]*)>\*\*(.*?)\*\*<\/a>/g, '<a$1><b>$2</b></a>');
             escaped = escaped.replace(/<a([^>]*)>\*(.*?)\*<\/a>/g, '<a$1><i>$2</i></a>');
             escaped = escaped.replace(/<a([^>]*)>__(.*?)__<\/a>/g, '<a$1><u>$2</u></a>');
             escaped = escaped.replace(/<a([^>]*)>~~(.*?)~~<\/a>/g, '<a$1><s>$2</s></a>');
-            
+           
             return escaped;
         }
     };
