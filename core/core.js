@@ -240,7 +240,7 @@
                 minute: '2-digit',
                 second: undefined,
                 hour12: false,
-                timeZone: 'Europe/Moscow'
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
             });
             
             if (isToday) return `Сегодня в ${time}`;
