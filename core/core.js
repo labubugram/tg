@@ -210,17 +210,13 @@
            
             let d;
             if (typeof date === 'string') {
-                d = new Date(date);
-                if (isNaN(d.getTime())) {
-                    const timestamp = Date.parse(date);
-                    if (!isNaN(timestamp)) {
-                        d = new Date(timestamp);
-                    } else {
-                        return 'Invalid date';
-                    }
+                if (date.endsWith('Z') || date.includes('+') || date.includes('-') && date.length > 19) {
+                    d = new Date(date);
+                } else {
+                    d = new Date(date + 'Z');
                 }
             } else if (date instanceof Date) {
-                d = date;
+                d = new Date(date.getTime());
             } else {
                 d = new Date(date);
             }
