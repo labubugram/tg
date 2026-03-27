@@ -214,7 +214,7 @@
             }
             if (isNaN(d.getTime())) return 'Invalid date';
             
-            d.setHours(d.getHours() + 1);
+            d.setHours(d.getHours() - 3);
             
             const now = new Date();
             const isToday = d.toDateString() === now.toDateString();
