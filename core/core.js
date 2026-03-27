@@ -208,21 +208,14 @@
         formatDate(date) {
             if (!date) return '';
            
-            let d;
-            if (typeof date === 'string') {
-                if (date.endsWith('Z') || date.indexOf('+') !== -1 || (date.indexOf('-') !== -1 && date.length > 19)) {
-                    d = new Date(date);
-                } else {
+            let d = new Date(date);
+            if (isNaN(d.getTime())) {
+                if (typeof date === 'string' && !date.endsWith('Z')) {
                     d = new Date(date + 'Z');
                 }
-            } else if (date instanceof Date) {
-                d = new Date(date.getTime());
-            } else {
-                d = new Date(date);
-            }
-           
-            if (isNaN(d.getTime())) {
-                return 'Invalid date';
+                if (isNaN(d.getTime())) {
+                    return 'Invalid date';
+                }
             }
            
             const now = new Date();
