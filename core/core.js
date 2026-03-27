@@ -207,43 +207,51 @@
     const Formatters = {
         formatDate(date) {
             if (!date) return '';
-
-            let d = new Date(date);
-            if (isNaN(d.getTime())) {
+            
+            let dateStr = date;
+            if (typeof dateStr === 'string') {
+                if (!dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('-')) {
+                    dateStr = dateStr + 'Z';
+                }
+            }
+            
+            let d = new Date(dateStr);
+            
+            if (isNaN(d.getTime()) && typeof date === 'string') {
                 d = new Date(date + 'Z');
             }
-
+            
             if (isNaN(d.getTime())) {
                 return 'Invalid date';
             }
-
+            
             const now = new Date();
-
+            
             const isToday = d.getFullYear() === now.getFullYear() &&
                             d.getMonth() === now.getMonth() &&
                             d.getDate() === now.getDate();
-
+            
             const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
             const isYesterday = d.getFullYear() === yesterday.getFullYear() &&
                                 d.getMonth() === yesterday.getMonth() &&
                                 d.getDate() === yesterday.getDate();
-
+            
             const time = d.toLocaleTimeString('ru-RU', {
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: false
             });
-
+            
             if (isToday) return `Сегодня в ${time}`;
             if (isYesterday) return `Вчера в ${time}`;
-
-            const dateStr = d.toLocaleDateString('ru-RU', {
+            
+            const dateStrFormatted = d.toLocaleDateString('ru-RU', {
                 day: '2-digit',
                 month: 'long',
                 year: d.getFullYear() === now.getFullYear() ? undefined : 'numeric'
             });
-
-            return `${dateStr} в ${time}`;
+            
+            return `${dateStrFormatted} в ${time}`;
         },
        
         formatViews(views) {
