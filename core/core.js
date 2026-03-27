@@ -210,7 +210,7 @@
            
             let d;
             if (typeof date === 'string') {
-                if (date.endsWith('Z') || date.includes('+') || date.includes('-') && date.length > 19) {
+                if (date.endsWith('Z') || date.indexOf('+') !== -1 || (date.indexOf('-') !== -1 && date.length > 19)) {
                     d = new Date(date);
                 } else {
                     d = new Date(date + 'Z');
