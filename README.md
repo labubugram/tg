@@ -61,7 +61,6 @@
 | Светское советское! | [Перейти](https://labubugram.github.io/tg/svetskoe/) |
 | Лингвистические истории | [Перейти](https://labubugram.github.io/tg/linguisticstory/) |
 | а вот мой яндекс кошелек | [Перейти](https://labubugram.github.io/tg/lastoppo/) |
-| Save pic | [Перейти](https://labubugram.github.io/tg/s4vepic/) |
 | Закрытый космос | [Перейти](https://labubugram.github.io/tg/roscosmos_press/) |
 | Шкаф с кассетами | [Перейти](https://labubugram.github.io/tg/videoshkaf/) |
 | OpenNews | [Перейти](https://labubugram.github.io/tg/opennews/) |
