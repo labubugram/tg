@@ -64,6 +64,12 @@
 | Save pic | [Перейти](https://labubugram.github.io/tg/s4vepic/) |
 | Закрытый космос | [Перейти](https://labubugram.github.io/tg/roscosmos_press/) |
 | Шкаф с кассетами | [Перейти](https://labubugram.github.io/tg/videoshkaf/) |
+| OpenNews | [Перейти](https://labubugram.github.io/tg/opennews/) |
+| opennet.ru | [Перейти](https://labubugram.github.io/tg/opennet_ru/)|
+| Страдающее Средневековье | [Перейти](https://labubugram.github.io/tg/kamenschiki/) |
+| Полина Роттердам | [Перейти](https://labubugram.github.io/tg/paulina_rotterdam/) |
+| Корсунская - wolker_not_nude | [Перейти](https://labubugram.github.io/tg/wolker_not_nude/) |
+| Эпоха 90-х | [Перейти](https://labubugram.github.io/tg/LostGen/) |
 
 ## ⚙️ Возможности
 
