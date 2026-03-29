@@ -49,7 +49,6 @@
 | Фонтанка SPB Online | [Перейти](https://labubugram.github.io/tg/fontankaspb/) |
 | Дмитрий Медведев | [Перейти](https://labubugram.github.io/tg/medvedev_telegram/) |
 | AGDchan (Александр Дугин) | [Перейти](https://labubugram.github.io/tg/Agdchan/) |
-| Анатолий Шарий | [Перейти](https://labubugram.github.io/tg/ASupersharij/) |
 | Екатерина Мизулина | [Перейти](https://labubugram.github.io/tg/ekaterina_mizulina/) |
 | Хронограф | [Перейти](https://labubugram.github.io/tg/chronograph_life/) |
 | Восьмидесятые | [Перейти](https://labubugram.github.io/tg/knopka_az5/) |
