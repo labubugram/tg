@@ -68,6 +68,7 @@
 | Эпоха 90-х | [Перейти](https://labubugram.github.io/tg/LostGen/) |
 | ZOp4 | [Перейти](https://labubugram.github.io/tg/ZOp4_telega/) |
 | Machine-Dependent | [Перейти](https://labubugram.github.io/tg/machinedependent/) |
+| SecLab советы | [Перейти](https://labubugram.github.io/tg/SecLabm/) |
 
 ## ⚙️ Возможности
 
