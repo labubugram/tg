@@ -34,7 +34,7 @@
         MEDIA_READY_DELAY: 1000,
         MEDIA_RETRY_ON_ERROR: true,
         MAX_CONCURRENT_LOADS: 10,
-        MEDIA_LOAD_TIMEOUT: 30000,
+        MEDIA_LOAD_TIMEOUT: 5000,
         VIDEO_PRELOAD: 'metadata',
         RETRY_ON_NETWORK_ERROR: true,
         USE_LAZY_LOADING: true
