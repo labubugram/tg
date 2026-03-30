@@ -69,6 +69,7 @@
 | Корсунская - wolker_not_nude | [Перейти](https://labubugram.github.io/tg/wolker_not_nude/) |
 | Эпоха 90-х | [Перейти](https://labubugram.github.io/tg/LostGen/) |
 | ZOp4 | [Перейти](https://labubugram.github.io/tg/ZOp4_telega/) |
+| Machine-Dependent | [Перейти](https://labubugram.github.io/tg/machinedependent/) |
 
 ## ⚙️ Возможности
 
