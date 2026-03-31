@@ -44,11 +44,12 @@
 | Источник | Демо |
 |----------|------|
 | Раньше всех. Ну почти. | [Перейти](https://labubugram.github.io/tg/bbbreaking/) |
-| РБК. Новости. Главное | [Перейти](https://labubugram.github.io/tg/rbc_news/) |
+| ТАСС | [Перейти](https://labubugram.github.io/tg/tass_agency/) |
 | РИА Новости | [Перейти](https://labubugram.github.io/tg/rian_ru/) |
-| Светское советское! | [Перейти](https://labubugram.github.io/tg/svetskoe/) |
+| РБК. Новости. Главное | [Перейти](https://labubugram.github.io/tg/rbc_news/) |
 | Дмитрий Медведев | [Перейти](https://labubugram.github.io/tg/medvedev_telegram/) |
 | AGDchan | [Перейти](https://labubugram.github.io/tg/Agdchan/) |
+| Светское советское! | [Перейти](https://labubugram.github.io/tg/svetskoe/) |
 | Disclose.tv | [Перейти](https://labubugram.github.io/tg/disclosetv/) |
 | Fotros Resistance | [Перейти](https://labubugram.github.io/tg/FotrosResistancee/) |
 | HardMeme Cafe | [Перейти](https://labubugram.github.io/tg/hardmemecafe/) |
@@ -68,7 +69,6 @@
 | а вот мой яндекс кошелек | [Перейти](https://labubugram.github.io/tg/lastoppo/) |
 | Александр ДроZденко | [Перейти](https://labubugram.github.io/tg/drozdenko_au_lo/) |
 | Александр Панчин | [Перейти](https://labubugram.github.io/tg/ScienceInquisition/) |
-| Анатолий Шарий | [Перейти](https://labubugram.github.io/tg/ASupersharij/) |
 | Безвольные каменщики | [Перейти](https://labubugram.github.io/tg/kamenschiki/) |
 | БП онлайн | [Перейти](https://labubugram.github.io/tg/bponline/) |
 | Бэкдор | [Перейти](https://labubugram.github.io/tg/whackdoor/) |
@@ -85,11 +85,9 @@
 | Любовь не взаимна ❤️‍🩹 | [Перейти](https://labubugram.github.io/tg/not_in_love/) |
 | Мальчиш Плохиш | [Перейти](https://labubugram.github.io/tg/malchish_bad/) |
 | мурохамма | [Перейти](https://labubugram.github.io/tg/muroxamma/) |
-| Нулевые | [Перейти](https://labubugram.github.io/tg/onautonula/) |
 | Пикчи разной степени абсурдности | [Перейти](https://labubugram.github.io/tg/picchiiiiii/) |
 | Старая Москва | [Перейти](https://labubugram.github.io/tg/old_Moscow/) |
 | Страдающее Средневековье | [Перейти](https://labubugram.github.io/tg/pophistory/) |
-| ТАСС | [Перейти](https://labubugram.github.io/tg/tass_agency/) |
 | Философский Кукож | [Перейти](https://labubugram.github.io/tg/soymem/) |
 | Фонтанка SPB Online | [Перейти](https://labubugram.github.io/tg/fontankaspb/) |
 | Фуфайки Клок | [Перейти](https://labubugram.github.io/tg/for5oclock/) |
