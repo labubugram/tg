@@ -59,7 +59,6 @@
 | One America News Network | [Перейти](https://labubugram.github.io/tg/OANNTV/) |
 | opennet.ru | [Перейти](https://labubugram.github.io/tg/opennet_ru/) |
 | OpenNews | [Перейти](https://labubugram.github.io/tg/opennews/) |
-| Save pic | [Перейти](https://labubugram.github.io/tg/s4vepic/) |
 | SecLab советы | [Перейти](https://labubugram.github.io/tg/SecLabm/) |
 | SecurityLab.ru | [Перейти](https://labubugram.github.io/tg/SecLabNews/) |
 | Sou Wan | [Перейти](https://labubugram.github.io/tg/SouWan/) |
