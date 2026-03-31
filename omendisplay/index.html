@@ -1,85 +1,482 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-
-
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="mirror:api-base" content="https://nekhebet.su">
-    <meta name="mirror:channel-id" content="3531011298">
-    <meta name="mirror:channel-title" content="labubugram.github.io">
-    <meta name="mirror:channel-username" content="omendisplay">
-    <meta name="mirror:channel-avatar" content="avatar.jpg">
-    <title>labubugram.github.io</title>
-    
-    <!-- Open Graph -->
-    <meta property="og:title" content="labubugram.github.io" />
-    <meta property="og:description" content="labubugram.github.io - Replay to Web" />
-    <meta property="og:type" content="profile" />
-    <meta property="og:url" content="https://labubugram.github.io/tg/omendisplay/" />
-    <meta property="og:image" content="https://raw.githubusercontent.com/labubugram/tg/main/core/placeholder.jpg" />
-    <meta property="og:site_name" content="Archiving & Replay System & Self-Hosted CDN & Web Client" />
-    <meta property="og:locale" content="ru_RU">
-    
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="labubugram.github.io - Replay to Web" />
-    <meta name="twitter:description" content="Archiving & Replay System & Self-Hosted CDN & Web Client" />
-    <meta name="twitter:image" content="https://raw.githubusercontent.com/labubugram/tg/main/core/placeholder.jpg" />
-    
-    <!-- Preconnect -->
-    <link rel="preconnect" href="https://labubugram.github.io">
-    <link rel="dns-prefetch" href="https://labubugram.github.io">
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Telegram Channels Catalog</title>
     <link rel="stylesheet" href="/tg/core/core.css">
-
-    <link
-      rel="icon"
-      type="image/svg+xml"
-      href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgaWQ9Ikljb25zIgogICB2aWV3Qm94PSIwIDAgMjE1IDIxNSIKICAgdmVyc2lvbj0iMS4xIgogICB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPgogIDxkZWZzCiAgICAgaWQ9ImRlZnM5Ij4KICAgIDxzdHlsZQogICAgICAgaWQ9InN0eWxlMiI+LmNscy0xe2ZpbGw6dXJsKCPQkdC10LfRi9C80Y/QvdC90YvQuV/Qs9GA0LDQtNC40LXQvdGCXzIpO30uY2xzLTJ7ZmlsbDojZmZmO2ZpbGwtcnVsZTpldmVub2RkO308L3N0eWxlPgogICAgPGxpbmVhckdyYWRpZW50CiAgICAgICBpZD0i0JHQtdC30YvQvNGP0L3QvdGL0Llf0LPRgNCw0LTQuNC10L3Rgl8yIgogICAgICAgeTE9IjEwNy41IgogICAgICAgeDI9IjIxNSIKICAgICAgIHkyPSIxMDcuNSIKICAgICAgIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3AKICAgICAgICAgb2Zmc2V0PSIwIgogICAgICAgICBzdG9wLWNvbG9yPSIjMmFhYmVlIgogICAgICAgICBpZD0ic3RvcDQiCiAgICAgICAgIHN0eWxlPSJzdG9wLWNvbG9yOiMzYzNjM2M7c3RvcC1vcGFjaXR5OjE7IiAvPgogICAgICA8c3RvcAogICAgICAgICBvZmZzZXQ9IjEiCiAgICAgICAgIHN0b3AtY29sb3I9IiMyMjllZDkiCiAgICAgICAgIGlkPSJzdG9wNiIKICAgICAgICAgc3R5bGU9InN0b3AtY29sb3I6IzNjM2MzYztzdG9wLW9wYWNpdHk6MTsiIC8+CiAgICA8L2xpbmVhckdyYWRpZW50PgogIDwvZGVmcz4KICA8ZwogICAgIGlkPSJEcmFnb25LYWxpIj4KICAgIDx0aXRsZQogICAgICAgaWQ9InRpdGxlNDgiPkRyYWdvbkthbGk8L3RpdGxlPgogICAgPGcKICAgICAgIGlkPSJnNSI+CiAgICAgIDxnCiAgICAgICAgIGlkPSJnNCI+CiAgICAgICAgPGNpcmNsZQogICAgICAgICAgIGlkPSJCYWNrZ3JvdW5kIgogICAgICAgICAgIGNsYXNzPSJjbHMtMSIKICAgICAgICAgICBjeD0iMTA3LjUiCiAgICAgICAgICAgY3k9IjEwNy41IgogICAgICAgICAgIHI9IjEwNy41IgogICAgICAgICAgIHN0eWxlPSJtaXgtYmxlbmQtbW9kZTpub3JtYWw7ZmlsbDojNGQ0ZDRkIiAvPgogICAgICAgIDxnCiAgICAgICAgICAgaWQ9ImcxMzA5IgogICAgICAgICAgIHRyYW5zZm9ybT0ibWF0cml4KDAuNDY3NTQwODEsMCwwLDAuNDY3NTQwODEsLTEyLjIwNDAxNywtNy41MjgwOTcpIgogICAgICAgICAgIHN0eWxlPSJmaWxsOiNmZmZmZmY7ZmlsbC1vcGFjaXR5OjEiPgogICAgICAgICAgPGcKICAgICAgICAgICAgIGlkPSJnMTMwMyIKICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiNmZmZmZmY7ZmlsbC1vcGFjaXR5OjEiPgogICAgICAgICAgICA8cGF0aAogICAgICAgICAgICAgICBkPSJNIDE3NS44LDM5NC41IDE4OC4zLDIyNy43IDU3LjcsMTc0LjUgYyAwLDAgMTguMiwzOS45IDUsODkuNiAwLDAgNDgsMjEuMiAzOCw3Ni43IHoiCiAgICAgICAgICAgICAgIGZpbGw9IiM2MzY5NzgiCiAgICAgICAgICAgICAgIGlkPSJwYXRoMTMwMSIKICAgICAgICAgICAgICAgc3R5bGU9ImZpbGw6I2ZmZmZmZjtmaWxsLW9wYWNpdHk6MSIgLz4KICAgICAgICAgIDwvZz4KICAgICAgICAgIDxnCiAgICAgICAgICAgICBpZD0iZzEzMDciCiAgICAgICAgICAgICBzdHlsZT0iZmlsbDojZmZmZmZmO2ZpbGwtb3BhY2l0eToxIj4KICAgICAgICAgICAgPHBhdGgKICAgICAgICAgICAgICAgZD0iTSAzMzYuMiwzOTQuNSAzMjMuNywyMjcuNyA0NTQuMywxNzQuNSBjIDAsMCAtMTguMiwzOS45IC01LDg5LjYgMCwwIC00OCwyMS4yIC0zOCw3Ni43IHoiCiAgICAgICAgICAgICAgIGZpbGw9IiM1NTVhNjYiCiAgICAgICAgICAgICAgIGlkPSJwYXRoMTMwNSIKICAgICAgICAgICAgICAgc3R5bGU9ImZpbGw6I2ZmZmZmZjtmaWxsLW9wYWNpdHk6MSIgLz4KICAgICAgICAgIDwvZz4KICAgICAgICA8L2c+CiAgICAgICAgPGcKICAgICAgICAgICBpZD0iZzEzMzMiCiAgICAgICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMC4zOTExOTI0MSwwLDAsMC4zOTExOTI0MSw1LjY0MTMwNTksLTQuMjczNTI1MSkiCiAgICAgICAgICAgc3R5bGU9ImZpbGw6I2ZmZmZmZjtmaWxsLW9wYWNpdHk6MSIgLz4KICAgICAgICA8ZwogICAgICAgICAgIGlkPSJnMiIKICAgICAgICAgICBzdHlsZT0iZmlsbDojZmZmZmZmIj4KICAgICAgICAgIDxnCiAgICAgICAgICAgICBpZD0iZzEzMjUiCiAgICAgICAgICAgICB0cmFuc2Zvcm09Im1hdHJpeCgwLjQxMjkyMzY3LDAsMCwwLjMzNjU5NDIsMC45MzUzMTY1NSwxNS40NzMwNTkpIgogICAgICAgICAgICAgc3R5bGU9ImZpbGw6I2ZmZmZmZjtmaWxsLW9wYWNpdHk6MSI+CiAgICAgICAgICAgIDxwYXRoCiAgICAgICAgICAgICAgIGQ9Ik0gMjU2LDQ3IEMgMTk5LDQ3IDE1Mi44LDkzLjIgMTUyLjgsMTUwLjIgdiAyMjQuMyBsIDg3LjQsLTQ3LjIgYyA2LDAgMTEuOSwtMC41IDE3LjcsLTEuMyBWIDQ3IGMgLTAuNiwwIC0xLjIsMCAtMS45LDAgeiIKICAgICAgICAgICAgICAgZmlsbD0iIzQxNDk1MiIKICAgICAgICAgICAgICAgaWQ9InBhdGgxMzIzIgogICAgICAgICAgICAgICBzdHlsZT0iZmlsbDojZmZmZmZmO2ZpbGwtb3BhY2l0eToxIiAvPgogICAgICAgICAgPC9nPgogICAgICAgICAgPGcKICAgICAgICAgICAgIGlkPSJnMTMyOSIKICAgICAgICAgICAgIHRyYW5zZm9ybT0ibWF0cml4KDAuNDEyOTIzNjcsMCwwLDAuMzQxNjYwOSwwLjkzNTMxNjU1LDE1LjIzNDkyNCkiCiAgICAgICAgICAgICBzdHlsZT0iZmlsbDojZmZmZmZmO2ZpbGwtb3BhY2l0eToxIj4KICAgICAgICAgICAgPHBhdGgKICAgICAgICAgICAgICAgZD0ibSAyNTYsNDcgdiAyNzkuMyBjIDU4LjIsLTcuNyAxMDMuMiw5Mi42IDEwMy4yLDMyLjIgViAxNTAuMiBDIDM1OS4yLDkzLjIgMzEzLDQ3IDI1Niw0NyBaIgogICAgICAgICAgICAgICBmaWxsPSIjMjMyNzJiIgogICAgICAgICAgICAgICBpZD0icGF0aDEzMjciCiAgICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiNmZmZmZmY7ZmlsbC1vcGFjaXR5OjEiIC8+CiAgICAgICAgICA8L2c+CiAgICAgICAgICA8ZwogICAgICAgICAgICAgaWQ9ImcxMzUzIgogICAgICAgICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMC40MTI5MjM2NywwLDAsMC40MTI5MjM2NywwLjkzNTMxNjU1LDExLjg4NTU3MykiCiAgICAgICAgICAgICBzdHlsZT0iZmlsbDojZmZmZmZmO2ZpbGwtb3BhY2l0eToxIj4KICAgICAgICAgICAgPHBhdGgKICAgICAgICAgICAgICAgZD0ibSAyMTkuNiw0MjYuOSAtNjYuOCwtMjYuNCB2IC0xMTYgaCA2Ni44IHoiCiAgICAgICAgICAgICAgIGZpbGw9IiM0MTQ5NTIiCiAgICAgICAgICAgICAgIGlkPSJwYXRoMTM1MSIKICAgICAgICAgICAgICAgc3R5bGU9ImZpbGw6I2ZmZmZmZjtmaWxsLW9wYWNpdHk6MSIgLz4KICAgICAgICAgIDwvZz4KICAgICAgICAgIDxnCiAgICAgICAgICAgICBpZD0iZzEzNTciCiAgICAgICAgICAgICB0cmFuc2Zvcm09Im1hdHJpeCgwLjQxMjkyMzY3LDAsMCwwLjQxMjkyMzY3LDAuOTM1MzE2NTUsMTEuODg1NTczKSIKICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiNmZmZmZmY7ZmlsbC1vcGFjaXR5OjEiPgogICAgICAgICAgICA8cGF0aAogICAgICAgICAgICAgICBkPSJtIDM1OS4yLDQwMC41IC02Ni44LDI2LjQgViAyODQuNSBoIDY2LjggeiIKICAgICAgICAgICAgICAgZmlsbD0iIzIzMjcyYiIKICAgICAgICAgICAgICAgaWQ9InBhdGgxMzU1IgogICAgICAgICAgICAgICBzdHlsZT0iZmlsbDojZmZmZmZmO2ZpbGwtb3BhY2l0eToxIiAvPgogICAgICAgICAgPC9nPgogICAgICAgIDwvZz4KICAgICAgICA8ZwogICAgICAgICAgIGlkPSJnMTM0MyIKICAgICAgICAgICB0cmFuc2Zvcm09Im1hdHJpeCgwLjQxMjkyMzY3LDAsMCwwLjQxMjkyMzY3LDAuOTM1MzE2NTUsMTEuODg1NTczKSIKICAgICAgICAgICBzdHlsZT0iZmlsbDojM2MzYzNjO2ZpbGwtb3BhY2l0eToxIj4KICAgICAgICAgIDxnCiAgICAgICAgICAgICBpZD0iZzEzNDEiCiAgICAgICAgICAgICBzdHlsZT0iZmlsbDojM2MzYzNjO2ZpbGwtb3BhY2l0eToxIiAvPgogICAgICAgIDwvZz4KICAgICAgICA8ZwogICAgICAgICAgIGlkPSJnMSIKICAgICAgICAgICBzdHlsZT0iZmlsbDojNGQ0ZDRkIj4KICAgICAgICAgIDxnCiAgICAgICAgICAgICBpZD0iZzEzNDkiCiAgICAgICAgICAgICB0cmFuc2Zvcm09Im1hdHJpeCgwLjQxMjkyMzY3LDAsMCwwLjQxMjkyMzY3LDAuOTM1MzE2NTUsMTEuODg1NTczKSIKICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiM0ZDRkNGQ7ZmlsbC1vcGFjaXR5OjEiPgogICAgICAgICAgICA8ZwogICAgICAgICAgICAgICBpZD0iZzEzNDciCiAgICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiM0ZDRkNGQ7ZmlsbC1vcGFjaXR5OjEiPgogICAgICAgICAgICAgIDxwYXRoCiAgICAgICAgICAgICAgICAgaWQ9InBhdGgxMzQ1IgogICAgICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiM0ZDRkNGQ7ZmlsbC1vcGFjaXR5OjEiCiAgICAgICAgICAgICAgICAgZD0ibSAyNTYsMTQ3LjMgdiAxNDUgYyA0NC45LDAgODEuMiwtMzYuNCA4MS4yLC04MS4yIHYgLTM3LjMgeiBtIC04MS4yLDI2LjUgViAyMTEgYyAwLDQ0LjkgMzYuNCw4MS4yIDgxLjIsODEuMiBoIDIgbCAtMS40LC0xNDUuMSB6IiAvPgogICAgICAgICAgICA8L2c+CiAgICAgICAgICA8L2c+CiAgICAgICAgPC9nPgogICAgICAgIDxnCiAgICAgICAgICAgaWQ9ImczIgogICAgICAgICAgIHN0eWxlPSJmaWxsOiNmZmZmZmYiCiAgICAgICAgICAgdHJhbnNmb3JtPSJtYXRyaXgoMSwwLDAsMC45MjgzMzE5NiwwLDUuNjI4MTk1MikiPgogICAgICAgICAgPHBhdGgKICAgICAgICAgICAgIGQ9Im0gMTUzLjQ2OTMyLDM4LjQ3Nzg1NyBjIC0zLjI2MjA5LDEzLjU4NTE4OSAtMTguNDU3NjcsMTMuNDYxMzEyIC0xOC40NTc2NywxMy40NjEzMTIgLTMuMjIwODEsMTEuMzE0MTA5IC0xNi4xNDUzMiw4LjI1ODQ3NCAtMTYuMTQ1MzIsOC4yNTg0NzQgbCAtMy40MjcyOCwyLjg0OTE3MiBjIDAuNDk1NTIsLTQuMDQ2NjUxIDAuMTIzODgsLTguMjE3MTggLTEuMTk3NDgsLTEyLjE4MTI0OCBsIC03LjU5Nzc5LC0yMy4wODI0MzMgLTcuNTk3ODAyLDIzLjA0MTE0MSBjIC0xLjM2MjY0NSw0LjA4Nzk0NCAtMS43MzQyODEsOC40MjM2NDQgLTEuMTU2MTg0LDEyLjU5NDE3MiBsIC0zLjk2NDA2OCwtMy4yNjIwOTYgYyAwLDAgLTEyLjkyNDUxMSwzLjA1NTYzNCAtMTYuMTQ1MzE1LC04LjI1ODQ3NSAwLDAgLTE1LjIzNjg4MywwLjEyMzg3OSAtMTguNDk4OTgxLC0xMy40NjEzMSAwLDAgLTYuOTc4NDA5LDI1LjI3MDkyOCAxNi41MTY5NDcsMzEuOTE4OTk4IGggMjMuOTQ5NTggYyAwLjIwNjQ2LDAuNDk1NTA5IDAuNDU0MjEzLDEuMDMyMzA5IDAuNzAxOTYzLDEuNTI3ODE5IGwgMS45NDA3NCw0LjAwNTM1OSBjIDAuNzg0NTcsMS42MTA0MDMgMi4zOTQ5NywyLjYwMTQxOSA0LjE3MDUzLDIuNjAxNDE5IDEuNzc1NTgsMCAzLjQyNzI3LC0xLjAzMjMxIDQuMTcwNTMsLTIuNjAxNDE5IGwgMS45NDA3NSwtNC4wMDUzNTkgYyAwLjI0Nzc0LC0wLjQ5NTUxIDAuNDk1NSwtMS4wMzIzMSAwLjcwMTk3LC0xLjUyNzgxOSBoIDIzLjQ5NTM2IGMgMjMuNjE5MjIsLTYuNTY1NDg1IDE2LjU5OTUyLC0zMS44Nzc3MDcgMTYuNTk5NTIsLTMxLjg3NzcwNyB6IgogICAgICAgICAgICAgZmlsbD0iI2ZmNDY4YyIKICAgICAgICAgICAgIGlkPSJwYXRoMTM2NyIKICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiNmZmZmZmY7ZmlsbC1vcGFjaXR5OjE7c3Ryb2tlLXdpZHRoOjAuNDEyOTI0IiAvPgogICAgICAgICAgPHBhdGgKICAgICAgICAgICAgIGQ9Im0gMTA2LjY0Mzc4LDc4LjUzMTQ1MyBjIDEuNzc1NTgsMCAzLjQyNzI3LC0xLjAzMjMwOCA0LjE3MDUzLC0yLjYwMTQxOCBsIDEuOTQwNzQsLTQuMDA1MzYgYyAwLjI0Nzc3LC0wLjQ5NTUxIDAuNDk1NTEsLTEuMDMyMzEgMC43MDE5NywtMS41Mjc4MTcgaCAyMy40OTUzNiBjIDIzLjQ5NTM2LC02LjY0ODA3MSAxNi41MTY5NCwtMzEuOTE5MDAxIDE2LjUxNjk0LC0zMS45MTkwMDEgLTMuMjYyMDksMTMuNTg1MTg5IC0xOC40NTc2NywxMy40NjEzMTIgLTE4LjQ1NzY3LDEzLjQ2MTMxMiAtMy4yMjA4MSwxMS4zMTQxMDkgLTE2LjE0NTMyLDguMjU4NDc0IC0xNi4xNDUzMiw4LjI1ODQ3NCBsIC0zLjQyNzI4LDIuODQ5MTcyIGMgMC40OTU1MiwtNC4wNDY2NTEgMC4xMjM4OCwtOC4yMTcxOCAtMS4xOTc0OCwtMTIuMTgxMjQ4IGwgLTcuNTk3NzksLTIzLjA4MjQzMyB6IgogICAgICAgICAgICAgZmlsbD0iI2Q3Mjg3OCIKICAgICAgICAgICAgIGlkPSJwYXRoMTM2OSIKICAgICAgICAgICAgIHN0eWxlPSJmaWxsOiNmZmZmZmY7ZmlsbC1vcGFjaXR5OjE7c3Ryb2tlLXdpZHRoOjAuNDEyOTI0IiAvPgogICAgICAgIDwvZz4KICAgICAgPC9nPgogICAgPC9nPgogIDwvZz4KPC9zdmc+"
-    />
+    <style>
+        /* Дополнительные стили для каталога */
+        .catalog-header {
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .catalog-title {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 8px;
+        }
+        
+        .catalog-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+        
+        .categories {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .category-section {
+            margin-bottom: 32px;
+        }
+        
+        .category-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid var(--accent);
+            display: inline-block;
+            color: var(--text-primary);
+        }
+        
+        .channels-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 12px;
+        }
+        
+        .channel-card {
+            background: var(--surface);
+            border-radius: var(--card-radius);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            transition: all var(--transition-duration) ease;
+            border: 1px solid var(--border);
+            text-decoration: none;
+            color: inherit;
+        }
+        
+        .channel-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border-color: var(--accent);
+        }
+        
+        .channel-card:active {
+            transform: translateY(0);
+        }
+        
+        .channel-card-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--accent);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 600;
+            color: white;
+            flex-shrink: 0;
+        }
+        
+        .channel-card-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .channel-card-name {
+            font-weight: 600;
+            font-size: 16px;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .channel-card-username {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .channel-card-badge {
+            font-size: 11px;
+            color: var(--accent);
+            background: var(--accent-light);
+            padding: 2px 8px;
+            border-radius: 12px;
+            white-space: nowrap;
+        }
+        
+        .stats {
+            background: var(--bg-secondary);
+            padding: 12px 20px;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 13px;
+            border-top: 1px solid var(--border);
+        }
+        
+        .back-button {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all var(--transition-duration) ease;
+            z-index: 89;
+        }
+        
+        .back-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .search-bar {
+            max-width: 800px;
+            margin: 0 auto 20px;
+            padding: 0 20px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            color: var(--text-primary);
+            font-size: 16px;
+            transition: all var(--transition-duration) ease;
+        }
+        
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent);
+        }
+        
+        @media (max-width: 600px) {
+            .channels-grid {
+                grid-template-columns: 1fr;
+                gap: 10px;
+            }
+            
+            .channel-card {
+                padding: 12px;
+            }
+            
+            .channel-card-avatar {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+        }
+    </style>
 </head>
 <body>
-  
     <div id="app">
         <div class="tg-header">
-            <div class="channel-profile">
-                <div class="channel-avatar" id="channelAvatar" title="Click to toggle theme"></div>
-                <div class="channel-info">
-                    <div class="channel-title-row">
-                        <span class="channel-title" id="channelTitle">Loading...</span>
-                        <span class="status-dot" id="statusDot"></span>
-                    </div>
-                    <div class="channel-meta">
-                        <span id="channelUsername">@omendisplay</span>
-                        <span class="channel-badge">realtime</span>
-                    </div>
+            <div class="channel-profile" style="justify-content: center;">
+                <div class="channel-avatar" id="themeToggle" style="cursor: pointer;">
+                    <img src="/tg/core/avatar.jpg" style="width:54px; height:54px; object-fit:cover;" alt="Logo">
                 </div>
-                <div class="new-posts-badge hidden" id="newPostsBadge">
-                    <span class="new-dot"></span>
-                    <span id="newPostsCount">0</span> новых
+                <div class="channel-info" style="text-align: center;">
+                    <div class="channel-title-row" style="justify-content: center;">
+                        <span class="channel-title">Telegram Channels</span>
+                    </div>
+                    <div class="channel-meta" style="justify-content: center;">
+                        <span>Каталог каналов</span>
+                    </div>
                 </div>
             </div>
         </div>
-
-        <div class="feed" id="feed"></div>
-
-        <div id="infiniteScrollTrigger" class="infinite-scroll-trigger">
-            ↓ Загрузить ещё
+        
+        <div class="catalog-header">
+            <div class="catalog-title">📡 Каталог каналов</div>
+            <div class="catalog-subtitle">Выберите категорию для просмотра</div>
         </div>
-
-        <button class="scroll-top" id="scrollTopBtn" title="Наверх">
-            ↑
+        
+        <div class="search-bar">
+            <input type="text" class="search-input" id="searchInput" placeholder="🔍 Поиск каналов...">
+        </div>
+        
+        <div class="categories" id="categoriesContainer"></div>
+        
+        <div class="stats" id="stats">
+            Загрузка...
+        </div>
+        
+        <button class="back-button" id="backButton" style="display: none;" onclick="history.back()">
+            ←
         </button>
-
-        <div class="lightbox" id="lightbox">
-            <button class="lightbox-close" id="lightboxClose">✕</button>
-            <div class="lightbox-content" id="lightboxContent"></div>
-        </div>
-
-        <div id="toastContainer"></div>
     </div>
-
-    <script src="/tg/core/core.js"></script>
+    
+    <script>
+        // Данные категорий и каналов (можно загружать из JSON)
+        const categoriesData = {
+            "📰 Новости и СМИ": [
+                "bbbreaking", "tass_agency", "rian_ru", "fontankaspb", 
+                "rbc_news", "bponline", "moscowmap", "opennews"
+            ],
+            "👤 Блогеры и личности": [
+                "medvedev_telegram", "ekaterina_mizulina", "ScienceInquisition",
+                "gevorgyankarine", "paulina_rotterdam", "drozdenko_au_lo"
+            ],
+            "💻 IT и технологии": [
+                "machinedependent", "habr_com", "SecLabm", "SecLabNews",
+                "d_code", "exploitex", "whackdoor", "opennet_ru"
+            ],
+            "🎨 Культура и искусство": [
+                "pophistory", "old_Moscow", "videoshkaf", "kamenschiki",
+                "svetskoe", "christymemes", "linguisticstory", "knopka_az5"
+            ],
+            "🎮 Мемы и юмор": [
+                "hardmemecafe", "memy_meme", "picchiiiiii", "not_in_love",
+                "malchish_bad", "christymemes"
+            ],
+            "🌍 Политика и аналитика": [
+                "Agdchan", "ZOp4_telega", "warmonitors", "warcabinet",
+                "chronograph_life", "ASupersharij"
+            ],
+            "📚 Образование и наука": [
+                "ScienceInquisition", "linguisticstory", "nplusone",
+                "soymem", "LostGen"
+            ],
+            "🎬 Развлечения": [
+                "disclosetv", "insiderpaper", "lastoppo", "devianostyye",
+                "onautonula", "for5oclock"
+            ],
+            "🕌 Региональные": [
+                "FotrosResistancee", "kief_point", "muroxamma", "SouWan"
+            ],
+            "📱 Другое": [
+                "omendisplay", "s4vepic", "wristpuma", "wolker_not_nude",
+                "Lepragram", "nabekre", "muroxamma"
+            ]
+        };
+        
+        // Полное описание каналов (можно вынести в отдельный JSON)
+        const channelsInfo = {
+            // Новости и СМИ
+            "bbbreaking": { name: "Раньше всех. Ну почти.", username: "bbbreaking" },
+            "tass_agency": { name: "ТАСС", username: "tass_agency" },
+            "rian_ru": { name: "РИА Новости", username: "rian_ru" },
+            "fontankaspb": { name: "Фонтанка SPB Online", username: "fontankaspb" },
+            "rbc_news": { name: "РБК. Новости. Главное", username: "rbc_news" },
+            "bponline": { name: "БП онлайн", username: "bponline" },
+            "moscowmap": { name: "Новости Москвы", username: "moscowmap" },
+            "opennews": { name: "OpenNews", username: "opennews" },
+            
+            // Блогеры
+            "medvedev_telegram": { name: "Дмитрий Медведев", username: "medvedev_telegram" },
+            "ekaterina_mizulina": { name: "Екатерина Мизулина", username: "ekaterina_mizulina" },
+            "ScienceInquisition": { name: "Александр Панчин", username: "ScienceInquisition" },
+            "gevorgyankarine": { name: "Каринэ Геворгян. Избранное.", username: "gevorgyankarine" },
+            "paulina_rotterdam": { name: "Полина Роттердам", username: "paulina_rotterdam" },
+            "drozdenko_au_lo": { name: "Александр ДроZденко", username: "drozdenko_au_lo" },
+            
+            // IT
+            "machinedependent": { name: "Machine-Dependent", username: "machinedependent" },
+            "habr_com": { name: "Хабр", username: "habr_com" },
+            "SecLabm": { name: "SecLab советы", username: "SecLabm" },
+            "SecLabNews": { name: "SecurityLab.ru", username: "SecLabNews" },
+            "d_code": { name: "Код Дурова", username: "d_code" },
+            "exploitex": { name: "Эксплойт", username: "exploitex" },
+            "whackdoor": { name: "Бэкдор", username: "whackdoor" },
+            "opennet_ru": { name: "opennet.ru", username: "opennet_ru" },
+            
+            // Культура
+            "pophistory": { name: "Страдающее Средневековье", username: "pophistory" },
+            "old_Moscow": { name: "Старая Москва", username: "old_Moscow" },
+            "videoshkaf": { name: "Шкаф с кассетами", username: "videoshkaf" },
+            "kamenschiki": { name: "Безвольные каменщики", username: "kamenschiki" },
+            "svetskoe": { name: "Светское советское!", username: "svetskoe" },
+            "christymemes": { name: "Крис, где мемы?", username: "christymemes" },
+            "linguisticstory": { name: "Лингвистические истории", username: "linguisticstory" },
+            "knopka_az5": { name: "Восьмидесятые", username: "knopka_az5" },
+            
+            // Мемы
+            "hardmemecafe": { name: "HardMeme Cafe", username: "hardmemecafe" },
+            "memy_meme": { name: "Высокоранговые мемы", username: "memy_meme" },
+            "picchiiiiii": { name: "Пикчи разной степени абсурдности", username: "picchiiiiii" },
+            "not_in_love": { name: "Любовь не взаимна ❤️‍🩹", username: "not_in_love" },
+            "malchish_bad": { name: "Мальчиш Плохиш", username: "malchish_bad" },
+            
+            // Политика
+            "Agdchan": { name: "AGDchan", username: "Agdchan" },
+            "ZOp4_telega": { name: "ZОРЧ🚩", username: "ZOp4_telega" },
+            "warmonitors": { name: "War Monitor", username: "warmonitors" },
+            "warcabinet": { name: "WarCabinet", username: "warcabinet" },
+            "chronograph_life": { name: "Хронограф", username: "chronograph_life" },
+            "ASupersharij": { name: "Анатолий Шарий", username: "ASupersharij" },
+            
+            // Образование
+            "nplusone": { name: "N + 1", username: "nplusone" },
+            "soymem": { name: "Философский Кукож", username: "soymem" },
+            "LostGen": { name: "Эпоха 90-х", username: "LostGen" },
+            
+            // Развлечения
+            "disclosetv": { name: "Disclose.tv", username: "disclosetv" },
+            "insiderpaper": { name: "Insider Paper", username: "insiderpaper" },
+            "lastoppo": { name: "а вот мой яндекс кошелек", username: "lastoppo" },
+            "devianostyye": { name: "Девяностые", username: "devianostyye" },
+            "onautonula": { name: "Нулевые", username: "onautonula" },
+            "for5oclock": { name: "Фуфайки Клок", username: "for5oclock" },
+            
+            // Региональные
+            "FotrosResistancee": { name: "Fotros Resistance", username: "FotrosResistancee" },
+            "kief_point": { name: "Первый ближневосточный | Иран 🇮🇷", username: "kief_point" },
+            "muroxamma": { name: "мурохамма", username: "muroxamma" },
+            "SouWan": { name: "Sou Wan", username: "SouWan" },
+            
+            // Другое
+            "omendisplay": { name: "labubugram.github.io", username: "omendisplay" },
+            "s4vepic": { name: "Save pic", username: "s4vepic" },
+            "wristpuma": { name: "Запястье Пумы", username: "wristpuma" },
+            "wolker_not_nude": { name: "Корсунская | wolker_not_nude", username: "wolker_not_nude" },
+            "Lepragram": { name: "Лепра", username: "Lepragram" },
+            "nabekre": { name: "Набекрень", username: "nabekre" }
+        };
+        
+        function getChannelAvatar(username) {
+            // Генерируем цвет из username
+            const colors = ['#2481cc', '#50a95e', '#ed4a4a', '#f39c12', '#8e44ad', '#e67e22', '#1abc9c'];
+            const hash = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+            return colors[hash % colors.length];
+        }
+        
+        function renderCategories() {
+            const container = document.getElementById('categoriesContainer');
+            container.innerHTML = '';
+            
+            Object.entries(categoriesData).forEach(([category, channelUsernames]) => {
+                const section = document.createElement('div');
+                section.className = 'category-section';
+                
+                const title = document.createElement('div');
+                title.className = 'category-title';
+                title.textContent = category;
+                section.appendChild(title);
+                
+                const grid = document.createElement('div');
+                grid.className = 'channels-grid';
+                
+                channelUsernames.forEach(username => {
+                    const info = channelsInfo[username];
+                    if (!info) return;
+                    
+                    const card = document.createElement('a');
+                    card.className = 'channel-card';
+                    card.href = `/tg/${username}/`;
+                    card.setAttribute('data-username', username);
+                    card.setAttribute('data-name', info.name.toLowerCase());
+                    
+                    const avatarColor = getChannelAvatar(username);
+                    const initial = info.name.charAt(0).toUpperCase();
+                    
+                    card.innerHTML = `
+                        <div class="channel-card-avatar" style="background: ${avatarColor}">
+                            ${initial}
+                        </div>
+                        <div class="channel-card-info">
+                            <div class="channel-card-name">${escapeHtml(info.name)}</div>
+                            <div class="channel-card-username">@${username}</div>
+                        </div>
+                        <div class="channel-card-badge">→</div>
+                    `;
+                    
+                    grid.appendChild(card);
+                });
+                
+                section.appendChild(grid);
+                container.appendChild(section);
+            });
+            
+            updateStats();
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function updateStats() {
+            const totalChannels = Object.keys(channelsInfo).length;
+            const totalCategories = Object.keys(categoriesData).length;
+            document.getElementById('stats').innerHTML = `
+                📊 Всего каналов: ${totalChannels} | 📁 Категорий: ${totalCategories}
+            `;
+        }
+        
+        function setupSearch() {
+            const searchInput = document.getElementById('searchInput');
+            const cards = document.querySelectorAll('.channel-card');
+            
+            searchInput.addEventListener('input', (e) => {
+                const searchTerm = e.target.value.toLowerCase();
+                
+                cards.forEach(card => {
+                    const name = card.getAttribute('data-name') || '';
+                    const username = card.getAttribute('data-username') || '';
+                    const matches = name.includes(searchTerm) || username.includes(searchTerm);
+                    
+                    if (searchTerm === '') {
+                        card.style.display = '';
+                        // Показываем все секции
+                        document.querySelectorAll('.category-section').forEach(section => {
+                            section.style.display = '';
+                        });
+                    } else {
+                        card.style.display = matches ? '' : 'none';
+                        // Скрываем пустые секции
+                        document.querySelectorAll('.category-section').forEach(section => {
+                            const visibleCards = Array.from(section.querySelectorAll('.channel-card')).some(
+                                c => c.style.display !== 'none'
+                            );
+                            section.style.display = visibleCards ? '' : 'none';
+                        });
+                    }
+                });
+            });
+        }
+        
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 
+                (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const current = document.documentElement.getAttribute('data-theme');
+                const newTheme = current === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+            });
+        }
+        
+        // Инициализация
+        renderCategories();
+        setupSearch();
+        initTheme();
+    </script>
 </body>
 </html>
