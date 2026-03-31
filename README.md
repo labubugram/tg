@@ -95,6 +95,7 @@
 | Шкаф с кассетами | [Перейти](https://labubugram.github.io/tg/videoshkaf/) |
 | Эксплойт | [Перейти](https://labubugram.github.io/tg/exploitex/) |
 | Эпоха 90-х | [Перейти](https://labubugram.github.io/tg/LostGen/) |
+| мелана:) неизданное | [Перейти](https://labubugram.github.io/tg/vasiileevaa/) |
 
 ## ⚙️ Возможности
 
