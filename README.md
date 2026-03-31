@@ -43,12 +43,16 @@
 
 | Источник | Демо |
 |----------|------|
+| Раньше всех. Ну почти. | [Перейти](https://labubugram.github.io/tg/bbbreaking/) |
+| РБК. Новости. Главное | [Перейти](https://labubugram.github.io/tg/rbc_news/) |
+| РИА Новости | [Перейти](https://labubugram.github.io/tg/rian_ru/) |
+| Светское советское! | [Перейти](https://labubugram.github.io/tg/svetskoe/) |
+| Дмитрий Медведев | [Перейти](https://labubugram.github.io/tg/medvedev_telegram/) |
 | AGDchan | [Перейти](https://labubugram.github.io/tg/Agdchan/) |
 | Disclose.tv | [Перейти](https://labubugram.github.io/tg/disclosetv/) |
 | Fotros Resistance | [Перейти](https://labubugram.github.io/tg/FotrosResistancee/) |
 | HardMeme Cafe | [Перейти](https://labubugram.github.io/tg/hardmemecafe/) |
 | Insider Paper | [Перейти](https://labubugram.github.io/tg/insiderpaper/) |
-| labubugram.github.io | [Перейти](https://labubugram.github.io/tg/omendisplay/) |
 | Machine-Dependent | [Перейти](https://labubugram.github.io/tg/machinedependent/) |
 | N + 1 | [Перейти](https://labubugram.github.io/tg/nplusone/) |
 | One America News Network | [Перейти](https://labubugram.github.io/tg/OANNTV/) |
@@ -71,29 +75,18 @@
 | Восьмидесятые | [Перейти](https://labubugram.github.io/tg/knopka_az5/) |
 | Высокоранговые мемы | [Перейти](https://labubugram.github.io/tg/memy_meme/) |
 | Девяностые | [Перейти](https://labubugram.github.io/tg/devianostyye/) |
-| Дмитрий Медведев | [Перейти](https://labubugram.github.io/tg/medvedev_telegram/) |
 | Екатерина Мизулина | [Перейти](https://labubugram.github.io/tg/ekaterina_mizulina/) |
 | Закрытый космос | [Перейти](https://labubugram.github.io/tg/roscosmos_press/) |
 | Запястье Пумы | [Перейти](https://labubugram.github.io/tg/wristpuma/) |
-| Каринэ Геворгян. Избранное. | [Перейти](https://labubugram.github.io/tg/gevorgyankarine/) |
 | Код Дурова | [Перейти](https://labubugram.github.io/tg/d_code/) |
-| Корсунская \| wolker_not_nude | [Перейти](https://labubugram.github.io/tg/wolker_not_nude/) |
 | Крис, где мемы? | [Перейти](https://labubugram.github.io/tg/christymemes/) |
 | Лепра | [Перейти](https://labubugram.github.io/tg/Lepragram/) |
 | Лингвистические истории | [Перейти](https://labubugram.github.io/tg/linguisticstory/) |
 | Любовь не взаимна ❤️‍🩹 | [Перейти](https://labubugram.github.io/tg/not_in_love/) |
 | Мальчиш Плохиш | [Перейти](https://labubugram.github.io/tg/malchish_bad/) |
 | мурохамма | [Перейти](https://labubugram.github.io/tg/muroxamma/) |
-| Набекрень | [Перейти](https://labubugram.github.io/tg/nabekre/) |
-| Новости Москвы | [Перейти](https://labubugram.github.io/tg/moscowmap/) |
 | Нулевые | [Перейти](https://labubugram.github.io/tg/onautonula/) |
-| Первый ближневосточный \| Иран 🇮🇷 | [Перейти](https://labubugram.github.io/tg/kief_point/) |
 | Пикчи разной степени абсурдности | [Перейти](https://labubugram.github.io/tg/picchiiiiii/) |
-| Полина Роттердам | [Перейти](https://labubugram.github.io/tg/paulina_rotterdam/) |
-| Раньше всех. Ну почти. | [Перейти](https://labubugram.github.io/tg/bbbreaking/) |
-| РБК. Новости. Главное | [Перейти](https://labubugram.github.io/tg/rbc_news/) |
-| РИА Новости | [Перейти](https://labubugram.github.io/tg/rian_ru/) |
-| Светское советское! | [Перейти](https://labubugram.github.io/tg/svetskoe/) |
 | Старая Москва | [Перейти](https://labubugram.github.io/tg/old_Moscow/) |
 | Страдающее Средневековье | [Перейти](https://labubugram.github.io/tg/pophistory/) |
 | ТАСС | [Перейти](https://labubugram.github.io/tg/tass_agency/) |
@@ -115,4 +108,4 @@
 - **Аналитика:** Статистика и интеграции
 
 ---
-*Последнее обновление: 31.03.2026 | Всего каналов: 62*
+
