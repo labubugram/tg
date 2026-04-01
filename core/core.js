@@ -1288,44 +1288,49 @@
                 `;
             }
         },
+        
         attachMediaHandlers(postEl) {
             const videos = postEl.querySelectorAll('video');
+            const abortController = new AbortController();
+            const { signal } = abortController;
+            
+            // Сохраняем controller для очистки при удалении поста
+            postEl._videoAbortController = abortController;
+            
             videos.forEach(video => {
-                video.addEventListener('play', () => VideoManager.handleVideoPlay(video));
-                video.addEventListener('pause', () => VideoManager.handleVideoPause(video));
+                const retryVideo = () => {
+                    if (!video.isConnected) return;
+                    video.load();
+                    const tryPlay = () => {
+                        video.play().catch(e => {
+                            console.warn('Auto-play failed after retry:', e);
+                        });
+                        video.removeEventListener('canplay', tryPlay);
+                    };
+                    video.addEventListener('canplay', tryPlay, { once: true, signal });
+                };
+                
+                video.addEventListener('play', () => VideoManager.handleVideoPlay(video), { signal });
+                video.addEventListener('pause', () => VideoManager.handleVideoPause(video), { signal });
                 video.addEventListener('error', (e) => {
                     console.error(`Video failed to load: ${video.src}`, e);
                     const error = video.error;
-                    if (error && error.code === MediaError.MEDIA_ERR_NETWORK) {
-                        const messageId = video.closest('.post')?.dataset.messageId;
-                        if (messageId && CONFIG.RETRY_ON_NETWORK_ERROR) {
-                            safeSetTimeout(() => {
-                                video.load();
-                                video.play().catch(() => {});
-                            }, 5000);
-                        }
+                    if (error?.code === MediaError.MEDIA_ERR_NETWORK && CONFIG.RETRY_ON_NETWORK_ERROR) {
+                        safeSetTimeout(retryVideo, 5000, signal);
                     } else {
                         const container = video.closest('.media-container');
                         if (container && !container.querySelector('.media-error')) {
                             container.innerHTML = '<div class="media-error">Failed to load video</div>';
                         }
                     }
-                });
+                }, { signal });
+                
                 if (navigator.onLine === false) {
                     video.setAttribute('data-pending', 'true');
                 }
             });
-            const images = postEl.querySelectorAll('img');
-            images.forEach(img => {
-                img.addEventListener('error', () => {
-                    console.error('Image failed to load:', img.src);
-                    const container = img.closest('.media-container');
-                    if (container && !container.querySelector('.media-error')) {
-                        container.innerHTML = '<div class="media-error">Failed to load image</div>';
-                    }
-                });
-            });
         },
+
         handleNetworkOnline() {
             console.log('Network is online, retrying failed videos');
             document.querySelectorAll('video[data-pending="true"]').forEach(video => {
