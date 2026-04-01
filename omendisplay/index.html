@@ -907,10 +907,7 @@
         <div class="stats" id="stats">
             📊 Всего каналов: 54 | 📁 Категорий: 7 | Обновлено: 01.04.2026
         </div>
-        
-        <a href="javascript:history.back()" class="back-button" id="backButton" style="display: none;">
-            ←
-        </a>
+
     </div>
     
     <script>
@@ -980,12 +977,6 @@
             }
         }
         
-        function initBackButton() {
-            const backButton = document.getElementById('backButton');
-            if (backButton && window.history.length > 1) {
-                backButton.style.display = 'flex';
-            }
-        }
         
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
