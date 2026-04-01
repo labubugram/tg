@@ -71,6 +71,7 @@
         
         .channel-card:hover {
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateY(-1px);
         }
         
         .channel-card:active {
@@ -98,7 +99,7 @@
         
         .channel-card-name {
             font-weight: 600;
-            font-size: 12px;
+            font-size: 14px;
             margin-bottom: 4px;
             white-space: nowrap;
             overflow: hidden;
@@ -126,6 +127,7 @@
             color: var(--text-secondary);
             font-size: 13px;
             border-top: 1px solid var(--border);
+            margin-top: 20px;
         }
         
         .back-button {
@@ -144,15 +146,19 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
             transition: all var(--transition-duration) ease;
             z-index: 89;
+            text-decoration: none;
+            color: var(--text-primary);
+            font-size: 24px;
         }
         
         .back-button:hover {
             transform: scale(1.05);
+            background: var(--surface-hover);
         }
         
         .search-bar {
             max-width: 800px;
-            margin: 25px auto 5px;
+            margin: 20px auto 5px;
             padding: 0 20px;
         }
         
@@ -163,13 +169,17 @@
             border: 1px solid var(--border);
             border-radius: 24px;
             color: var(--text-primary);
-            font-size: 11px;
+            font-size: 14px;
             transition: all var(--transition-duration) ease;
         }
         
         .search-input:focus {
             outline: none;
             border-color: var(--accent);
+        }
+        
+        .search-input::placeholder {
+            color: var(--text-secondary);
         }
         
         @media (max-width: 600px) {
@@ -187,6 +197,38 @@
                 height: 40px;
                 font-size: 16px;
             }
+            
+            .channel-card-name {
+                font-size: 13px;
+            }
+            
+            .category-title {
+                font-size: 13px;
+            }
+        }
+        
+        /* Анимация появления */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .channel-card {
+            animation: fadeInUp 0.3s ease forwards;
+        }
+        
+        /* Пустое состояние поиска */
+        .no-results {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
         }
     </style>
 </head>
@@ -198,20 +240,18 @@
                     <img src="avatar.jpg" style="width:54px; height:54px; object-fit:cover;" alt="Logo">
                 </div>
                 <div class="channel-info" style="text-align: center;">
-                    <div class="channel-title-row">
+                    <div class="channel-title-row" style="justify-content: center;">
                         <span class="channel-title">Telegram Channels</span>
                     </div>
-                    <div class="channel-meta">
+                    <div class="channel-meta" style="justify-content: center;">
                         <span>Каталог каналов</span>
                     </div>
                 </div>
             </div>
         </div>
         
-
-        
         <div class="search-bar">
-            <input type="text" class="search-input" id="searchInput" placeholder="Поиск ...">
+            <input type="text" class="search-input" id="searchInput" placeholder="🔍 Поиск каналов по названию или username...">
         </div>
         
         <div class="categories" id="categoriesContainer"></div>
@@ -220,13 +260,13 @@
             Загрузка...
         </div>
         
-        <button class="back-button" id="backButton" style="display: none;" onclick="history.back()">
+        <a href="javascript:history.back()" class="back-button" id="backButton" style="display: none;">
             ←
-        </button>
+        </a>
     </div>
     
     <script>
-        // Данные категорий и каналов (можно загружать из JSON)
+        // Данные категорий и каналов
         const categoriesData = {
             "📰 Новости и СМИ": [
                 "bbbreaking", "tass_agency", "rian_ru", "fontankaspb", 
@@ -265,11 +305,11 @@
             ],
             "📱 Другое": [
                 "omendisplay", "s4vepic", "wristpuma", "wolker_not_nude",
-                "Lepragram", "nabekre", "muroxamma"
+                "Lepragram", "nabekre"
             ]
         };
         
-        // Полное описание каналов (можно вынести в отдельный JSON)
+        // Полное описание каналов
         const channelsInfo = {
             // Новости и СМИ
             "bbbreaking": { name: "Раньше всех. Ну почти.", username: "bbbreaking" },
@@ -283,6 +323,7 @@
             // Блогеры
             "medvedev_telegram": { name: "Дмитрий Медведев", username: "medvedev_telegram" },
             "ekaterina_mizulina": { name: "Екатерина Мизулина", username: "ekaterina_mizulina" },
+            "paulina_rotterdam": { name: "Полина Роттердам", username: "paulina_rotterdam" },
             "drozdenko_au_lo": { name: "Александр ДроZденко", username: "drozdenko_au_lo" },
             
             // IT
@@ -310,15 +351,19 @@
             "picchiiiiii": { name: "Пикчи разной степени абсурдности", username: "picchiiiiii" },
             "not_in_love": { name: "Любовь не взаимна ❤️‍🩹", username: "not_in_love" },
             "malchish_bad": { name: "Мальчиш Плохиш", username: "malchish_bad" },
+            "christymemes": { name: "Крис, где мемы?", username: "christymemes" },
             "wristpuma": { name: "Запястье Пумы", username: "wristpuma" },
             
             // Политика
             "Agdchan": { name: "AGDchan", username: "Agdchan" },
+            "ZOp4_telega": { name: "ZОРЧ🚩", username: "ZOp4_telega" },
             "warmonitors": { name: "War Monitor", username: "warmonitors" },
             "warcabinet": { name: "WarCabinet", username: "warcabinet" },
             "chronograph_life": { name: "Хронограф", username: "chronograph_life" },
+            "ASupersharij": { name: "Анатолий Шарий", username: "ASupersharij" },
             
             // Образование
+            "ScienceInquisition": { name: "Александр Панчин", username: "ScienceInquisition" },
             "nplusone": { name: "N + 1", username: "nplusone" },
             "soymem": { name: "Философский Кукож", username: "soymem" },
             "LostGen": { name: "Эпоха 90-х", username: "LostGen" },
@@ -328,33 +373,55 @@
             "insiderpaper": { name: "Insider Paper", username: "insiderpaper" },
             "lastoppo": { name: "а вот мой яндекс кошелек", username: "lastoppo" },
             "devianostyye": { name: "Девяностые", username: "devianostyye" },
+            "onautonula": { name: "Нулевые", username: "onautonula" },
             "for5oclock": { name: "Фуфайки Клок", username: "for5oclock" },
-            "ZOp4_telega": { name: "ZОРЧ🚩", username: "ZOp4_telega" },
             
             // Региональные
             "FotrosResistancee": { name: "Fotros Resistance", username: "FotrosResistancee" },
+            "kief_point": { name: "Первый ближневосточный | Иран 🇮🇷", username: "kief_point" },
             "muroxamma": { name: "мурохамма", username: "muroxamma" },
             "SouWan": { name: "Sou Wan", username: "SouWan" },
             
             // Другое
-
-            "Lepragram": { name: "Лепра", username: "Lepragram" }
+            "omendisplay": { name: "labubugram.github.io", username: "omendisplay" },
+            "s4vepic": { name: "Save pic", username: "s4vepic" },
+            "wolker_not_nude": { name: "Корсунская | wolker_not_nude", username: "wolker_not_nude" },
+            "Lepragram": { name: "Лепра", username: "Lepragram" },
+            "nabekre": { name: "Набекрень", username: "nabekre" }
         };
         
         function getChannelAvatar(username) {
-            // Генерируем цвет из username
-            const colors = ['#2481cc', '#50a95e', '#ed4a4a', '#f39c12', '#8e44ad', '#e67e22', '#1abc9c'];
+            const colors = ['#2481cc', '#50a95e', '#ed4a4a', '#f39c12', '#8e44ad', '#e67e22', '#1abc9c', '#3498db', '#9b59b6', '#2ecc71'];
             const hash = username.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
             return colors[hash % colors.length];
         }
         
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function updateStats() {
+            const totalChannels = Object.keys(channelsInfo).length;
+            const totalCategories = Object.keys(categoriesData).length;
+            const statsEl = document.getElementById('stats');
+            if (statsEl) {
+                statsEl.innerHTML = `📊 Всего каналов: ${totalChannels} | 📁 Категорий: ${totalCategories}`;
+            }
+        }
+        
         function renderCategories() {
             const container = document.getElementById('categoriesContainer');
+            if (!container) return;
+            
             container.innerHTML = '';
+            let hasContent = false;
             
             Object.entries(categoriesData).forEach(([category, channelUsernames]) => {
                 const section = document.createElement('div');
                 section.className = 'category-section';
+                section.setAttribute('data-category', category);
                 
                 const title = document.createElement('div');
                 title.className = 'category-title';
@@ -364,9 +431,13 @@
                 const grid = document.createElement('div');
                 grid.className = 'channels-grid';
                 
+                let hasChannels = false;
                 channelUsernames.forEach(username => {
                     const info = channelsInfo[username];
                     if (!info) return;
+                    
+                    hasChannels = true;
+                    hasContent = true;
                     
                     const card = document.createElement('a');
                     card.className = 'channel-card';
@@ -379,11 +450,11 @@
                     
                     card.innerHTML = `
                         <div class="channel-card-avatar" style="background: ${avatarColor}">
-                            ${initial}
+                            ${escapeHtml(initial)}
                         </div>
                         <div class="channel-card-info">
                             <div class="channel-card-name">${escapeHtml(info.name)}</div>
-                            <div class="channel-card-username">@${username}</div>
+                            <div class="channel-card-username">@${escapeHtml(username)}</div>
                         </div>
                         <div class="channel-card-badge">→</div>
                     `;
@@ -391,56 +462,62 @@
                     grid.appendChild(card);
                 });
                 
-                section.appendChild(grid);
-                container.appendChild(section);
+                if (hasChannels) {
+                    section.appendChild(grid);
+                    container.appendChild(section);
+                }
             });
+            
+            if (!hasContent) {
+                container.innerHTML = '<div class="no-results">📭 Нет доступных каналов</div>';
+            }
             
             updateStats();
         }
         
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-        
-        function updateStats() {
-            const totalChannels = Object.keys(channelsInfo).length;
-            const totalCategories = Object.keys(categoriesData).length;
-            document.getElementById('stats').innerHTML = `
-                📊 Всего каналов: ${totalChannels} | 📁 Категорий: ${totalCategories}
-            `;
-        }
-        
         function setupSearch() {
             const searchInput = document.getElementById('searchInput');
-            const cards = document.querySelectorAll('.channel-card');
+            if (!searchInput) return;
+            
+            let searchTimeout;
             
             searchInput.addEventListener('input', (e) => {
-                const searchTerm = e.target.value.toLowerCase();
-                
-                cards.forEach(card => {
-                    const name = card.getAttribute('data-name') || '';
-                    const username = card.getAttribute('data-username') || '';
-                    const matches = name.includes(searchTerm) || username.includes(searchTerm);
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(() => {
+                    const searchTerm = e.target.value.toLowerCase().trim();
+                    const sections = document.querySelectorAll('.category-section');
+                    let hasVisibleCards = false;
                     
-                    if (searchTerm === '') {
-                        card.style.display = '';
-                        // Показываем все секции
-                        document.querySelectorAll('.category-section').forEach(section => {
-                            section.style.display = '';
+                    sections.forEach(section => {
+                        const cards = section.querySelectorAll('.channel-card');
+                        let sectionHasVisible = false;
+                        
+                        cards.forEach(card => {
+                            const name = card.getAttribute('data-name') || '';
+                            const username = card.getAttribute('data-username') || '';
+                            const matches = searchTerm === '' || name.includes(searchTerm) || username.includes(searchTerm);
+                            
+                            card.style.display = matches ? 'flex' : 'none';
+                            if (matches) sectionHasVisible = true;
                         });
-                    } else {
-                        card.style.display = matches ? '' : 'none';
-                        // Скрываем пустые секции
-                        document.querySelectorAll('.category-section').forEach(section => {
-                            const visibleCards = Array.from(section.querySelectorAll('.channel-card')).some(
-                                c => c.style.display !== 'none'
-                            );
-                            section.style.display = visibleCards ? '' : 'none';
-                        });
+                        
+                        section.style.display = sectionHasVisible ? '' : 'none';
+                        if (sectionHasVisible) hasVisibleCards = true;
+                    });
+                    
+                    const container = document.getElementById('categoriesContainer');
+                    if (container && !hasVisibleCards && searchTerm !== '') {
+                        if (!container.querySelector('.no-results-search')) {
+                            const noResults = document.createElement('div');
+                            noResults.className = 'no-results';
+                            noResults.innerHTML = `🔍 Ничего не найдено по запросу "${escapeHtml(searchTerm)}"`;
+                            container.appendChild(noResults);
+                        }
+                    } else if (container) {
+                        const noResultsEl = container.querySelector('.no-results-search');
+                        if (noResultsEl) noResultsEl.remove();
                     }
-                });
+                }, 200);
             });
         }
         
@@ -449,18 +526,31 @@
                 (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             document.documentElement.setAttribute('data-theme', savedTheme);
             
-            document.getElementById('themeToggle').addEventListener('click', () => {
-                const current = document.documentElement.getAttribute('data-theme');
-                const newTheme = current === 'dark' ? 'light' : 'dark';
-                document.documentElement.setAttribute('data-theme', newTheme);
-                localStorage.setItem('theme', newTheme);
-            });
+            const themeToggle = document.getElementById('themeToggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('click', () => {
+                    const current = document.documentElement.getAttribute('data-theme');
+                    const newTheme = current === 'dark' ? 'light' : 'dark';
+                    document.documentElement.setAttribute('data-theme', newTheme);
+                    localStorage.setItem('theme', newTheme);
+                });
+            }
+        }
+        
+        function initBackButton() {
+            const backButton = document.getElementById('backButton');
+            if (backButton && window.history.length > 1) {
+                backButton.style.display = 'flex';
+            }
         }
         
         // Инициализация
-        renderCategories();
-        setupSearch();
-        initTheme();
+        document.addEventListener('DOMContentLoaded', () => {
+            renderCategories();
+            setupSearch();
+            initTheme();
+            initBackButton();
+        });
     </script>
 </body>
 </html>
