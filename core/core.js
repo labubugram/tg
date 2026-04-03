@@ -1398,7 +1398,6 @@
                         <div class="post-author-info">
                             <div class="post-author-name">
                                 ${CONFIG.CHANNEL_TITLE}
-                                <span class="post-username">@${CONFIG.CHANNEL_USERNAME}</span>
                             </div>
                             <div class="post-date">
                                 ${date}
