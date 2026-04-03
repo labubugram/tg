@@ -140,7 +140,6 @@
     padding: 40px 20px;
     background: var(--bg-secondary);
     border-radius: var(--media-radius);
-    border: 1px solid var(--red);
 }
 
 .media-unavailable {
