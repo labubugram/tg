@@ -1408,10 +1408,44 @@
                     ${mediaHTML}
                 </div>
                 <div class="post-footer">
-                    <span class="views-count">👁 ${views}</span>
+                    <button class="heart-view-btn" data-message-id="${post.message_id}" data-clicked="false" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
+                        <div class="heart-view-icon" style="width:20px; height:20px; background:url('https://cssanimation.rocks/images/posts/steps/heart.png') no-repeat; background-position:0 0; background-size:560px 20px; transition:background-position 0s steps(28);"></div>
+                        <span class="views-count">${views}</span>
+                    </button>
                 </div>
             `;
             setTimeout(() => this.attachMediaHandlers(postEl), 0);
+            
+            // Добавляем обработчик клика на сердечко
+            const heartBtn = postEl.querySelector('.heart-view-btn');
+            if (heartBtn) {
+                heartBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const isClicked = heartBtn.getAttribute('data-clicked') === 'true';
+                    if (!isClicked) {
+                        heartBtn.setAttribute('data-clicked', 'true');
+                        const icon = heartBtn.querySelector('.heart-view-icon');
+                        const viewsSpan = heartBtn.querySelector('.views-count');
+                        
+                        // Анимация сердечка
+                        icon.style.transitionDuration = '0.6s';
+                        icon.style.backgroundPosition = '-560px 0';
+                        
+                        // Анимация пульсации
+                        icon.style.transform = 'scale(1.2)';
+                        setTimeout(() => icon.style.transform = '', 200);
+                        
+                        // Увеличиваем счетчик просмотров
+                        let currentViews = parseInt(viewsSpan.textContent.replace(/[^0-9]/g, '')) || 0;
+                        currentViews++;
+                        viewsSpan.textContent = currentViews;
+                        
+                        // Вибрация на мобильных
+                        if (navigator.vibrate) navigator.vibrate(50);
+                    }
+                });
+            }
+            
             return postEl;
         },
         updatePost(messageId, data, options = {}) {
