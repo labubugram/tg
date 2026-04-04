@@ -668,6 +668,12 @@ body {
     transition: color var(--transition-duration) ease;
 }
 
+.heartSVG {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
 .heart-btn {
     background: none;
     border: none;
@@ -675,32 +681,9 @@ body {
     padding: 0;
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    transition: transform 0.2s ease;
-}
-
-.heart-btn:hover {
-    transform: scale(1.05);
-}
-
-.heart-btn:active {
-    transform: scale(0.95);
-}
-
-.heartSVG {
-    width: 48px;
-    height: 48px;
-    transition: all 0.2s ease;
-}
-
-.heart {
-    transition: fill 0.2s ease;
-}
-
-.heartLines line {
-    stroke-dasharray: 200;
-    stroke-dashoffset: 200;
-    transition: stroke-dashoffset 0.4s ease;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
 }
 
 
