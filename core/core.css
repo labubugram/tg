@@ -668,6 +668,42 @@ body {
     transition: color var(--transition-duration) ease;
 }
 
+.heart-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: transform 0.2s ease;
+}
+
+.heart-btn:hover {
+    transform: scale(1.05);
+}
+
+.heart-btn:active {
+    transform: scale(0.95);
+}
+
+.heartSVG {
+    width: 28px;
+    height: 28px;
+    transition: all 0.2s ease;
+}
+
+.heart {
+    transition: fill 0.2s ease;
+}
+
+.heartLines line {
+    stroke-dasharray: 200;
+    stroke-dashoffset: 200;
+    transition: stroke-dashoffset 0.4s ease;
+}
+
+
 /* Lightbox */
 .lightbox {
     position: fixed;
