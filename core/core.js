@@ -1409,7 +1409,7 @@
                 </div>
                 <div class="post-footer">
                     <button class="heart-view-btn" data-message-id="${post.message_id}" data-clicked="false" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
-                        <div class="heart-view-icon" style="width:20px; height:20px; background:url('https://cssanimation.rocks/images/posts/steps/heart.png') no-repeat; background-position:0 0; background-size:560px 20px; transition:background-position 0s steps(28);"></div>
+                        <div class="heart-view-icon" style="width:30px; height:30px; background:url('https://cssanimation.rocks/images/posts/steps/heart.png') no-repeat; background-position:0 0; background-size:560px 20px; transition:background-position 0s steps(28);"></div>
                         <span class="views-count">${views}</span>
                     </button>
                 </div>
