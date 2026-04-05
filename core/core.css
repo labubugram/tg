@@ -502,7 +502,7 @@ body {
 .post-footer {
     display: flex;
     align-items: center;
-    padding: 8px 15px 8px;
+    padding: 10px 15px 10px;
     border-top: 1px solid var(--border);
     color: var(--text-secondary);
     font-size: 14px;
