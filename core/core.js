@@ -1505,11 +1505,22 @@
                 }
             }
             if (data.views !== undefined) {
-                const viewsEl = postEl.querySelector('.views-count');
-                if (viewsEl) {
-                    const newViews = `👁 ${Formatters.formatViews(data.views)}`;
-                    if (viewsEl.textContent !== newViews) {
-                        viewsEl.textContent = newViews;
+                const viewsSpan = postEl.querySelector('.heart-btn .views-count');
+                if (viewsSpan) {
+                    const newViews = Formatters.formatViews(data.views);
+                    if (viewsSpan.textContent !== newViews) {
+                        viewsSpan.textContent = newViews;
+                        const heartBtn = postEl.querySelector('.heart-btn');
+                        if (heartBtn) {
+                            heartBtn.setAttribute('data-raw-views', data.views);
+                            const isLiked = heartBtn.getAttribute('data-liked') === 'true';
+                            if (isLiked) {
+                                let rawViews = data.views;
+                                rawViews++;
+                                heartBtn.setAttribute('data-raw-views', rawViews);
+                                viewsSpan.textContent = Formatters.formatViews(rawViews);
+                            }
+                        }
                         changed = true;
                     }
                 }
