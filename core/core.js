@@ -1418,7 +1418,7 @@
                 <div class="post-footer">
                     <button class="heart-btn" data-message-id="${post.message_id}" data-liked="false" data-raw-views="${post.views}" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
                         ${heartSvg}
-                        <span class="views-count" style="font-size:13px;">${views}</span>
+                        <span class="views-count" style="font-size:12px;">${views}</span>
                     </button>
                 </div>
             `;
