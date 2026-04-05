@@ -1390,27 +1390,9 @@
                 }
             }
             
-            // SVG Heart template
             const heartSvg = `
-                <svg class="heartSVG" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 600 600">
-                    <defs>
-                        <path id="paper" d="M8.871,18.001c-0.157,0-0.316-0.015-0.477-0.046c-2.064-0.398-3.886-1.318-5.268-2.661 C-0.197,12.067-0.94,6.663,1.231,1.527c0.538-1.271,2.004-1.866,3.276-1.329C5.78,0.736,6.374,2.203,5.837,3.474 c-1.342,3.173-1.031,6.481,0.772,8.233c0.692,0.672,1.611,1.123,2.732,1.339c1.355,0.261,2.243,1.572,1.981,2.928 C11.092,17.17,10.044,18.001,8.871,18.001z"/>
-                        <path id="ring" d="M9.344,18.688C4.191,18.688,0,14.496,0,9.344S4.191,0,9.344,0s9.344,4.191,9.344,9.344 S14.496,18.688,9.344,18.688z M9.344,3C5.846,3,3,5.846,3,9.344s2.846,6.344,6.344,6.344s6.344-2.846,6.344-6.344 S12.842,3,9.344,3z"/>   
-                        <polygon id="star" points="17.365,18.587 10.846,15.88 4.92,19.716 5.48,12.679 0,8.229 6.865,6.587 9.405,0 13.088,6.022 20.137,6.401 15.548,11.765 "/>          
-                        <polygon id="diamond" points="6.444,17.442 0,8.721 6.444,0 12.888,8.721 "/>
-                    </defs>
-                    <g class="heartLines" stroke-width="3" fill="none">
-                        <line stroke="#98D4F8" x1="71" y1="71" x2="71" y2="0"/>
-                        <line stroke="#CA90F2" x1="71" y1="71" x2="121.205" y2="20.795"/>
-                        <line stroke="#94EFC6" x1="71" y1="71" x2="142" y2="71"/>
-                        <line stroke="#F9DB96" x1="71" y1="71" x2="121.205" y2="121.205"/>
-                        <line stroke="#98D4F8" x1="71" y1="71" x2="71" y2="142"/>
-                        <line stroke="#CA90F2" x1="71" y1="71" x2="20.795" y2="121.205"/>
-                        <line stroke="#94EFC6" x1="71" y1="71" x2="0" y2="71"/>
-                        <line stroke="#F9DB96" x1="71" y1="71" x2="20.795" y2="20.795"/>
-                    </g>
-                    <g class="pContainer"></g>
-                    <path class="heart" fill="#ABB9C2" d="M318.2,259.5c-7.5,0-14.2,3.7-18.2,9.5c-4-5.7-10.7-9.5-18.2-9.5 c-12.3,0-22.3,10-22.3,22.3c0,30.4,31.6,58.7,40.5,58.7s40.5-28.4,40.5-58.7C340.5,269.5,330.5,259.5,318.2,259.5z"/>  
+                <svg class="heartSVG" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100" width="24" height="24">
+                    <path class="heart" fill="#ABB9C2" d="M50,85 C50,85 15,55 15,35 C15,20 25,10 35,10 C45,10 50,20 50,25 C50,20 55,10 65,10 C75,10 85,20 85,35 C85,55 50,85 50,85Z"/>
                 </svg>
             `;
             
@@ -1433,7 +1415,7 @@
                     ${mediaHTML}
                 </div>
                 <div class="post-footer">
-                    <button class="heart-btn" data-message-id="${post.message_id}" data-clicked="false" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:8px;">
+                    <button class="heart-btn" data-message-id="${post.message_id}" data-clicked="false" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
                         ${heartSvg}
                         <span class="views-count" style="font-size:13px;">${views}</span>
                     </button>
@@ -1441,56 +1423,9 @@
             `;
             setTimeout(() => this.attachMediaHandlers(postEl), 0);
             
-            // Анимация сердечка при клике
             const heartBtn = postEl.querySelector('.heart-btn');
             if (heartBtn) {
-                const svgHeart = heartBtn.querySelector('.heart');
-                const svgLines = heartBtn.querySelector('.heartLines');
-                const pContainer = heartBtn.querySelector('.pContainer');
-                
-                // Функция для создания частиц
-                function createParticles(container, x, y) {
-                    const colors = ['#34A3F2', '#B400AC', '#88E259', '#F75E19', '#39C5C0', '#E3004D'];
-                    for (let i = 0; i < 12; i++) {
-                        const particle = document.createElementNS("http://www.w3.org/2000/svg", "use");
-                        const types = ['#paper', '#star', '#diamond', '#ring'];
-                        const randomType = types[Math.floor(Math.random() * types.length)];
-                        particle.setAttributeNS("http://www.w3.org/1999/xlink", "href", randomType);
-                        particle.setAttribute("fill", colors[Math.floor(Math.random() * colors.length)]);
-                        particle.setAttribute("x", x || 300);
-                        particle.setAttribute("y", y || 280);
-                        particle.setAttribute("width", "15");
-                        particle.setAttribute("height", "15");
-                        container.appendChild(particle);
-                        
-                        const angle = Math.random() * Math.PI * 2;
-                        const velocity = 50 + Math.random() * 100;
-                        const gravity = 80 + Math.random() * 100;
-                        let vx = Math.cos(angle) * velocity;
-                        let vy = Math.sin(angle) * velocity - 100;
-                        let posX = 300, posY = 280;
-                        let opacity = 1;
-                        let scale = 0.5 + Math.random() * 0.8;
-                        
-                        particle.setAttribute("transform", `translate(${posX}, ${posY}) scale(${scale})`);
-                        
-                        const animate = () => {
-                            vy += gravity * 0.02;
-                            posX += vx * 0.02;
-                            posY += vy * 0.02;
-                            opacity -= 0.02;
-                            scale -= 0.01;
-                            particle.setAttribute("transform", `translate(${posX}, ${posY}) scale(${scale})`);
-                            particle.setAttribute("opacity", opacity);
-                            if (opacity > 0 && posY < 600) {
-                                requestAnimationFrame(animate);
-                            } else {
-                                particle.remove();
-                            }
-                        };
-                        requestAnimationFrame(animate);
-                    }
-                }
+                const heartIcon = heartBtn.querySelector('.heart');
                 
                 heartBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -1498,41 +1433,18 @@
                     if (!isClicked) {
                         heartBtn.setAttribute('data-clicked', 'true');
                         
-                        // Анимация сердечка
-                        if (svgHeart) {
-                            svgHeart.style.transition = 'fill 0.2s ease, transform 0.2s ease';
-                            svgHeart.setAttribute('fill', '#E00050');
-                            svgHeart.style.transform = 'scale(1.1)';
-                            setTimeout(() => {
-                                svgHeart.style.transform = 'scale(1)';
-                            }, 200);
-                        }
+                        heartIcon.style.transition = 'fill 0.2s ease, transform 0.2s ease';
+                        heartIcon.setAttribute('fill', '#E00050');
+                        heartIcon.style.transform = 'scale(1.2)';
+                        setTimeout(() => {
+                            heartIcon.style.transform = 'scale(1)';
+                        }, 200);
                         
-                        // Анимация линий
-                        if (svgLines) {
-                            const lines = svgLines.querySelectorAll('line');
-                            lines.forEach(line => {
-                                line.style.transition = 'stroke-dashoffset 0.6s ease';
-                                line.style.strokeDasharray = '200';
-                                line.style.strokeDashoffset = '0';
-                            });
-                            setTimeout(() => {
-                                lines.forEach(line => {
-                                    line.style.strokeDashoffset = '200';
-                                });
-                            }, 600);
-                        }
-                        
-                        // Частицы
-                        createParticles(pContainer, 300, 280);
-                        
-                        // Увеличиваем счетчик просмотров
                         const viewsSpan = heartBtn.querySelector('.views-count');
                         let currentViews = parseInt(viewsSpan.textContent.replace(/[^0-9]/g, '')) || 0;
                         currentViews++;
                         viewsSpan.textContent = currentViews;
                         
-                        // Вибрация
                         if (navigator.vibrate) navigator.vibrate(50);
                     }
                 });
