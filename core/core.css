@@ -669,7 +669,7 @@ body {
 }
 
 .heartSVG {
-    width: 24px;
+    width: 16px;
     height: 16px;
     flex-shrink: 0;
 }
@@ -678,7 +678,7 @@ body {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0;
+    padding: 5px;
     display: inline-flex;
     align-items: center;
     gap: 6px;
