@@ -1339,6 +1339,7 @@
                 }
             });
         },
+        
         createPostElement(post) {
             const postEl = document.createElement('div');
             postEl.className = 'post';
@@ -1392,7 +1393,7 @@
             
             const heartSvg = `
                 <svg class="heartSVG" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 100 100" width="24" height="24">
-                    <path class="heart" fill="#ABB9C2" d="M50,85 C50,85 15,55 15,35 C15,20 25,10 35,10 C45,10 50,20 50,25 C50,20 55,10 65,10 C75,10 85,20 85,35 C85,55 50,85 50,85Z"/>
+                    <path class="heart" fill="#ABB9C2" d="M50,88 C50,88 10,52 10,30 C10,15 22,5 35,5 C45,5 50,15 50,22 C50,15 55,5 65,5 C78,5 90,15 90,30 C90,52 50,88 50,88Z"/>
                 </svg>
             `;
             
@@ -1452,6 +1453,7 @@
             
             return postEl;
         },
+
         updatePost(messageId, data, options = {}) {
             const postEl = document.querySelector(`.post[data-message-id="${messageId}"]`);
             if (!postEl) {
