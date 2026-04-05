@@ -1392,7 +1392,7 @@
             }
             
             const heartSvg = `
-                <svg class="heartSVG" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24" width="24" height="24">
+                <svg class="heartSVG" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24" width="16" height="16">
                     <path class="heart" fill="#ABB9C2" d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5 2,5.41 4.42,3 7.5,3c1.74,0 3.41.81 4.5,2.08C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.41 22,8.5c0,3.77-3.4,6.86-8.55,11.54L12,21.35Z"/>
                 </svg>
             `;
@@ -1416,7 +1416,7 @@
                     ${mediaHTML}
                 </div>
                 <div class="post-footer">
-                    <button class="heart-btn" data-message-id="${post.message_id}" data-clicked="false" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
+                    <button class="heart-btn" data-message-id="${post.message_id}" data-clicked="false" data-raw-views="${post.views}" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
                         ${heartSvg}
                         <span class="views-count" style="font-size:13px;">${views}</span>
                     </button>
@@ -1442,9 +1442,10 @@
                         }, 200);
                         
                         const viewsSpan = heartBtn.querySelector('.views-count');
-                        let currentViews = parseInt(viewsSpan.textContent.replace(/[^0-9]/g, '')) || 0;
-                        currentViews++;
-                        viewsSpan.textContent = currentViews;
+                        let rawViews = parseInt(heartBtn.getAttribute('data-raw-views')) || 0;
+                        rawViews++;
+                        heartBtn.setAttribute('data-raw-views', rawViews);
+                        viewsSpan.textContent = Formatters.formatViews(rawViews);
                         
                         if (navigator.vibrate) navigator.vibrate(50);
                     }
