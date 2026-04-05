@@ -1439,19 +1439,11 @@
                         heartBtn.setAttribute('data-liked', 'true');
                         rawViews++;
                         heartIcon.setAttribute('fill', '#E00050');
-                        heartIcon.style.transform = 'scale(1.2)';
-                        setTimeout(() => {
-                            heartIcon.style.transform = 'scale(1)';
-                        }, 200);
                         if (navigator.vibrate) navigator.vibrate(50);
                     } else {
                         heartBtn.setAttribute('data-liked', 'false');
                         rawViews--;
                         heartIcon.setAttribute('fill', '#ABB9C2');
-                        heartIcon.style.transform = 'scale(0.9)';
-                        setTimeout(() => {
-                            heartIcon.style.transform = 'scale(1)';
-                        }, 200);
                     }
                     
                     heartBtn.setAttribute('data-raw-views', rawViews);
