@@ -1392,7 +1392,7 @@
             }
             
             const heartSvg = `
-                <svg class="heartSVG" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24">
+                <svg class="heartSVG" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 24 24" width="24" height="24">
                     <path class="heart" fill="#ABB9C2" d="M12,21.35L10.55,20.03C5.4,15.36 2,12.27 2,8.5 2,5.41 4.42,3 7.5,3c1.74,0 3.41.81 4.5,2.08C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.41 22,8.5c0,3.77-3.4,6.86-8.55,11.54L12,21.35Z"/>
                 </svg>
             `;
@@ -1416,7 +1416,7 @@
                     ${mediaHTML}
                 </div>
                 <div class="post-footer">
-                    <button class="heart-btn" data-message-id="${post.message_id}" data-clicked="false" data-raw-views="${post.views}" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
+                    <button class="heart-btn" data-message-id="${post.message_id}" data-liked="false" data-raw-views="${post.views}" style="background:none; border:none; cursor:pointer; padding:0; display:inline-flex; align-items:center; gap:6px;">
                         ${heartSvg}
                         <span class="views-count" style="font-size:13px;">${views}</span>
                     </button>
@@ -1430,25 +1430,32 @@
                 
                 heartBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    const isClicked = heartBtn.getAttribute('data-clicked') === 'true';
-                    if (!isClicked) {
-                        heartBtn.setAttribute('data-clicked', 'true');
-                        
-                        heartIcon.style.transition = 'fill 0.2s ease, transform 0.2s ease';
+                    
+                    const isLiked = heartBtn.getAttribute('data-liked') === 'true';
+                    const viewsSpan = heartBtn.querySelector('.views-count');
+                    let rawViews = parseInt(heartBtn.getAttribute('data-raw-views')) || 0;
+                    
+                    if (!isLiked) {
+                        heartBtn.setAttribute('data-liked', 'true');
+                        rawViews++;
                         heartIcon.setAttribute('fill', '#E00050');
                         heartIcon.style.transform = 'scale(1.2)';
                         setTimeout(() => {
                             heartIcon.style.transform = 'scale(1)';
                         }, 200);
-                        
-                        const viewsSpan = heartBtn.querySelector('.views-count');
-                        let rawViews = parseInt(heartBtn.getAttribute('data-raw-views')) || 0;
-                        rawViews++;
-                        heartBtn.setAttribute('data-raw-views', rawViews);
-                        viewsSpan.textContent = Formatters.formatViews(rawViews);
-                        
                         if (navigator.vibrate) navigator.vibrate(50);
+                    } else {
+                        heartBtn.setAttribute('data-liked', 'false');
+                        rawViews--;
+                        heartIcon.setAttribute('fill', '#ABB9C2');
+                        heartIcon.style.transform = 'scale(0.9)';
+                        setTimeout(() => {
+                            heartIcon.style.transform = 'scale(1)';
+                        }, 200);
                     }
+                    
+                    heartBtn.setAttribute('data-raw-views', rawViews);
+                    viewsSpan.textContent = Formatters.formatViews(rawViews);
                 });
             }
             
