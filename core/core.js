@@ -1416,7 +1416,7 @@
                     ${mediaHTML}
                 </div>
                 <div class="post-footer style="display:inline-flex; align-items:center;">
-                    <button class="heart-btn" data-message-id="${post.message_id}" data-liked="false" data-raw-views="${post.views}" style="background:none; border:none; cursor:pointer; padding:5px; display:inline-flex; align-items:center; gap:6px;">
+                    <button class="heart-btn" data-message-id="${post.message_id}" data-liked="false" data-raw-views="${post.views}" style="background:none; border:none; cursor:pointer; padding:5px; display:inline-flex; align-items:stretch; gap:6px;">
                         ${heartSvg}
                         <span class="views-count" style="font-size:12px;">${views}</span>
                     </button>
